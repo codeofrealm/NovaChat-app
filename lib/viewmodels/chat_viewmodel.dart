@@ -1,0 +1,135 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
+import '../models/message_model.dart';
+import '../services/database_service.dart';
+import '../services/storage_service.dart';
+
+class ChatViewModel extends ChangeNotifier {
+  final DatabaseService _db = DatabaseService();
+  final StorageService _storage = StorageService();
+  final _uuid = const Uuid();
+
+  List<MessageModel> _messages = [];
+  bool _isLoading = false;
+  bool _isSending = false;
+  double _uploadProgress = 0;
+  StreamSubscription? _messagesSub;
+
+  List<MessageModel> get messages => _messages;
+  bool get isLoading => _isLoading;
+  bool get isSending => _isSending;
+  double get uploadProgress => _uploadProgress;
+
+  void listenToMessages(String chatId, String currentUid) {
+    _isLoading = true;
+    notifyListeners();
+    _messagesSub?.cancel();
+    _messagesSub = _db.messagesStream(chatId).listen((msgs) {
+      _messages = msgs;
+      _isLoading = false;
+      notifyListeners();
+      // Mark messages as seen
+      _db.markMessagesSeen(chatId, currentUid);
+    });
+  }
+
+  Future<void> sendTextMessage({
+    required String chatId,
+    required String senderId,
+    required String receiverId,
+    required String text,
+  }) async {
+    if (text.trim().isEmpty) return;
+    final msg = MessageModel(
+      messageId: _uuid.v4(),
+      senderId: senderId,
+      receiverId: receiverId,
+      text: text.trim(),
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      isDelivered: true,
+      type: MessageType.text,
+    );
+    await _db.sendMessage(chatId, msg);
+  }
+
+  Future<void> sendImageMessage({
+    required String chatId,
+    required String senderId,
+    required String receiverId,
+    required File imageFile,
+  }) async {
+    _isSending = true;
+    _uploadProgress = 0;
+    notifyListeners();
+    try {
+      final task = _storage.uploadChatImageWithProgress(chatId, imageFile);
+      task.snapshotEvents.listen((snap) {
+        _uploadProgress = snap.bytesTransferred / snap.totalBytes;
+        notifyListeners();
+      });
+      final snapshot = await task;
+      final url = await snapshot.ref.getDownloadURL();
+      final msg = MessageModel(
+        messageId: _uuid.v4(),
+        senderId: senderId,
+        receiverId: receiverId,
+        imageUrl: url,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+        isDelivered: true,
+        type: MessageType.image,
+      );
+      await _db.sendMessage(chatId, msg);
+    } finally {
+      _isSending = false;
+      _uploadProgress = 0;
+      notifyListeners();
+    }
+  }
+
+  Future<void> sendVoiceMessage({
+    required String chatId,
+    required String senderId,
+    required String receiverId,
+    required File voiceFile,
+  }) async {
+    _isSending = true;
+    notifyListeners();
+    try {
+      final url = await _storage.uploadVoiceMessage(chatId, voiceFile);
+      final msg = MessageModel(
+        messageId: _uuid.v4(),
+        senderId: senderId,
+        receiverId: receiverId,
+        voiceUrl: url,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+        isDelivered: true,
+        type: MessageType.voice,
+      );
+      await _db.sendMessage(chatId, msg);
+    } finally {
+      _isSending = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> addReaction(
+    String chatId, String messageId, String uid, String emoji,
+  ) async {
+    await _db.addReaction(chatId, messageId, uid, emoji);
+  }
+
+  void setTyping(String chatId, String uid, bool isTyping) {
+    _db.setTyping(chatId, uid, isTyping);
+  }
+
+  Stream<bool> typingStream(String chatId, String otherUid) =>
+      _db.typingStream(chatId, otherUid);
+
+  @override
+  void dispose() {
+    _messagesSub?.cancel();
+    super.dispose();
+  }
+}

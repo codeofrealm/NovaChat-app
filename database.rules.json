@@ -1,0 +1,22 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "chats": {
+      "$chatId": {
+        ".read": "auth != null && (data.child('participants').child(auth.uid).exists())",
+        ".write": "auth != null"
+      }
+    },
+    "messages": {
+      "$chatId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}

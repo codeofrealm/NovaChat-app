@@ -6,34 +6,24 @@ class AuthService {
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  // Send OTP to phone number
+  // Send OTP to phone number (mock)
   Future<void> sendOtp({
     required String phoneNumber,
     required Function(String verificationId, int? resendToken) onCodeSent,
     required Function(String error) onError,
     required Function(PhoneAuthCredential credential) onAutoVerified,
   }) async {
-    await _auth.verifyPhoneNumber(
-      phoneNumber: phoneNumber,
-      verificationCompleted: onAutoVerified,
-      verificationFailed: (e) => onError(e.message ?? 'Verification failed'),
-      codeSent: (verificationId, resendToken) =>
-          onCodeSent(verificationId, resendToken),
-      codeAutoRetrievalTimeout: (_) {},
-      timeout: const Duration(seconds: 60),
-    );
+    await Future.delayed(const Duration(milliseconds: 500));
+    onCodeSent('mock_verification_id', null);
   }
 
-  // Verify OTP and sign in
+  // Verify OTP (mock: only '12345' is valid)
   Future<UserCredential?> verifyOtp({
     required String verificationId,
     required String otp,
   }) async {
-    final credential = PhoneAuthProvider.credential(
-      verificationId: verificationId,
-      smsCode: otp,
-    );
-    return await _auth.signInWithCredential(credential);
+    if (otp != '12345') throw Exception('Invalid OTP');
+    return null;
   }
 
   // Sign in with credential (auto-verify)

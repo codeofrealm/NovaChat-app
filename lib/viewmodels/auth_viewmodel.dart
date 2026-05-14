@@ -1,14 +1,14 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../services/auth_service.dart';
-import '../services/database_service.dart';
+import '../services/firestore_service.dart';
 import '../models/user_model.dart';
 
 enum AuthState { idle, loading, otpSent, verified, error }
 
 class AuthViewModel extends ChangeNotifier {
   final AuthService _authService = AuthService();
-  final DatabaseService _dbService = DatabaseService();
+  final FirestoreService _dbService = FirestoreService();
 
   AuthState _state = AuthState.idle;
   String _errorMessage = '';
@@ -16,6 +16,10 @@ class AuthViewModel extends ChangeNotifier {
   int? _resendToken;
   UserModel? _currentUser;
   bool _isNewUser = false;
+  String _mockPhone = '';
+  String _pendingEmail = '';
+
+  static const _mockUid = 'mock_uid';
 
   AuthState get state => _state;
   String get errorMessage => _errorMessage;
@@ -30,6 +34,7 @@ class AuthViewModel extends ChangeNotifier {
 
   // Send OTP
   Future<void> sendOtp(String phoneNumber) async {
+    _mockPhone = phoneNumber;
     _setState(AuthState.loading);
     await _authService.sendOtp(
       phoneNumber: phoneNumber,
@@ -52,13 +57,14 @@ class AuthViewModel extends ChangeNotifier {
   Future<void> verifyOtp(String otp) async {
     _setState(AuthState.loading);
     try {
-      final result = await _authService.verifyOtp(
+      await _authService.verifyOtp(
         verificationId: _verificationId,
         otp: otp,
       );
-      if (result != null) {
-        await _checkUserExists(result.user!);
-      }
+      // Mock: no Firebase user, treat as new user
+      _isNewUser = true;
+      _currentUser = null;
+      _setState(AuthState.verified);
     } catch (e) {
       _errorMessage = 'Invalid OTP. Please try again.';
       _setState(AuthState.error);
@@ -82,11 +88,9 @@ class AuthViewModel extends ChangeNotifier {
     _setState(AuthState.verified);
   }
 
-  // Save email
+  // Save email (stored in memory, written to Firestore with profile)
   Future<void> saveEmail(String email) async {
-    final uid = firebaseUser?.uid;
-    if (uid == null) return;
-    await _dbService.updateUser(uid, {'email': email});
+    _pendingEmail = email;
   }
 
   // Save profile
@@ -96,14 +100,14 @@ class AuthViewModel extends ChangeNotifier {
     required String email,
     required String profileImageUrl,
   }) async {
-    final uid = firebaseUser?.uid;
-    if (uid == null) return;
+    final uid = firebaseUser?.uid ?? _mockUid;
     final now = DateTime.now().millisecondsSinceEpoch;
+    final resolvedEmail = email.isNotEmpty ? email : _pendingEmail;
     final user = UserModel(
       uid: uid,
       name: name,
-      email: email,
-      phone: phone,
+      email: resolvedEmail,
+      phone: phone.isNotEmpty ? phone : _mockPhone,
       profileImage: profileImageUrl,
       createdAt: now,
       lastSeen: now,
@@ -115,16 +119,12 @@ class AuthViewModel extends ChangeNotifier {
 
   // Load current user
   Future<void> loadCurrentUser() async {
-    final uid = firebaseUser?.uid;
-    if (uid == null) return;
+    final uid = firebaseUser?.uid ?? _mockUid;
     _currentUser = await _dbService.getUser(uid);
     notifyListeners();
   }
 
   Future<void> signOut() async {
-    if (_currentUser != null) {
-      _dbService.setOffline(_currentUser!.uid);
-    }
     await _authService.signOut();
     _currentUser = null;
     _state = AuthState.idle;

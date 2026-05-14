@@ -48,7 +48,7 @@ class _OtpScreenState extends State<OtpScreen>
   }
 
   Future<void> _verify() async {
-    if (_otpController.text.length < 6) return;
+    if (_otpController.text.length < 5) return;
     final vm = context.read<AuthViewModel>();
     await vm.verifyOtp(_otpController.text);
     if (!mounted) return;
@@ -83,7 +83,7 @@ class _OtpScreenState extends State<OtpScreen>
       backgroundColor: Colors.white,
       appBar: AppBar(backgroundColor: Colors.white, elevation: 0),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -94,7 +94,7 @@ class _OtpScreenState extends State<OtpScreen>
               _buildOtpField(),
               const SizedBox(height: 24),
               _buildResendRow(),
-              const Spacer(),
+              const SizedBox(height: 32),
               if (_showSuccess) _buildSuccessAnimation(),
               Consumer<AuthViewModel>(
                 builder: (_, vm, __) => PrimaryButton(
@@ -130,7 +130,7 @@ class _OtpScreenState extends State<OtpScreen>
         const Text('Verify OTP', style: AppTextStyles.displayMedium),
         const SizedBox(height: 8),
         Text(
-          'Enter the 6-digit code sent to\n${widget.phoneNumber}',
+          'Enter the 5-digit code sent to\n${widget.phoneNumber}',
           style: const TextStyle(
             fontSize: 15,
             color: AppColors.textSecondary,
@@ -159,7 +159,7 @@ class _OtpScreenState extends State<OtpScreen>
 
     return Pinput(
       controller: _otpController,
-      length: 6,
+      length: 5,
       defaultPinTheme: defaultPinTheme,
       focusedPinTheme: defaultPinTheme.copyDecorationWith(
         border: Border.all(color: AppColors.primary, width: 2),

@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
-import '../services/database_service.dart';
+import '../services/firestore_service.dart';
 import '../services/storage_service.dart';
 
 class ProfileViewModel extends ChangeNotifier {
-  final DatabaseService _db = DatabaseService();
+  final FirestoreService _db = FirestoreService();
   final StorageService _storage = StorageService();
 
   bool _isLoading = false;

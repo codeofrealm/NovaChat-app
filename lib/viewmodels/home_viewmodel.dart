@@ -2,9 +2,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../services/database_service.dart';
+import '../services/firestore_service.dart';
 
 class HomeViewModel extends ChangeNotifier {
   final DatabaseService _db = DatabaseService();
+  final FirestoreService _fs = FirestoreService();
 
   List<Map<String, dynamic>> _chats = [];
   List<UserModel> _allUsers = [];
@@ -31,7 +33,7 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   Future<void> loadAllUsers(String currentUid) async {
-    _allUsers = await _db.getAllUsers(currentUid);
+    _allUsers = await _fs.getAllUsers(currentUid);
     notifyListeners();
   }
 
@@ -44,12 +46,12 @@ class HomeViewModel extends ChangeNotifier {
     }
     _isSearching = true;
     notifyListeners();
-    _searchResults = await _db.searchUsers(query, currentUid);
+    _searchResults = await _fs.searchUsers(query, currentUid);
     _isSearching = false;
     notifyListeners();
   }
 
-  Stream<UserModel?> userStream(String uid) => _db.userStream(uid);
+  Stream<UserModel?> userStream(String uid) => _fs.userStream(uid);
 
   Stream<int> unreadCountStream(String chatId, String uid) =>
       _db.unreadCountStream(chatId, uid);

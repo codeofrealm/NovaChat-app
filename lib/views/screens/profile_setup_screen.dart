@@ -112,11 +112,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     try {
       final authVm = context.read<AuthViewModel>();
       final profileVm = context.read<ProfileViewModel>();
-      final uid = authVm.firebaseUser!.uid;
-      final phone = authVm.firebaseUser!.phoneNumber ?? '';
+      final uid = authVm.firebaseUser?.uid ?? 'mock_uid';
+      final phone = authVm.firebaseUser?.phoneNumber ?? '';
 
       String imageUrl = '';
-      if (_imageFile != null) {
+      // Only upload image if a real Firebase user is signed in
+      if (_imageFile != null && authVm.firebaseUser != null) {
         imageUrl = await profileVm.uploadProfileImage(uid, _imageFile!);
       }
 

@@ -1,68 +1,32 @@
 import 'package:firebase_database/firebase_database.dart';
-import '../models/user_model.dart';
 import '../models/message_model.dart';
 
 class DatabaseService {
   final _db = FirebaseDatabase.instance.ref();
 
-  // ─── Users ───────────────────────────────────────────────
-  Future<void> createUser(UserModel user) async {
-    await _db.child('users/${user.uid}').set(user.toMap());
-  }
-
-  Future<void> updateUser(String uid, Map<String, dynamic> data) async {
-    await _db.child('users/$uid').update(data);
-  }
-
-  Future<UserModel?> getUser(String uid) async {
-    final snap = await _db.child('users/$uid').get();
-    if (!snap.exists) return null;
-    return UserModel.fromMap(snap.value as Map, uid);
-  }
-
-  Stream<UserModel?> userStream(String uid) {
-    return _db.child('users/$uid').onValue.map((event) {
-      if (!event.snapshot.exists) return null;
-      return UserModel.fromMap(event.snapshot.value as Map, uid);
-    });
-  }
-
-  Future<List<UserModel>> getAllUsers(String currentUid) async {
-    final snap = await _db.child('users').get();
-    if (!snap.exists) return [];
-    final map = snap.value as Map;
-    return map.entries
-        .where((e) => e.key != currentUid)
-        .map((e) => UserModel.fromMap(e.value as Map, e.key))
-        .toList();
-  }
-
-  Future<List<UserModel>> searchUsers(String query, String currentUid) async {
-    final all = await getAllUsers(currentUid);
-    final q = query.toLowerCase();
-    return all
-        .where((u) =>
-            u.name.toLowerCase().contains(q) ||
-            u.phone.contains(q))
-        .toList();
-  }
-
   // ─── Online Presence ─────────────────────────────────────
   void setOnline(String uid) {
-    _db.child('users/$uid').update({
+    _db.child('presence/$uid').update({
       'isOnline': true,
       'lastSeen': ServerValue.timestamp,
     });
-    _db.child('users/$uid').onDisconnect().update({
+    _db.child('presence/$uid').onDisconnect().update({
       'isOnline': false,
       'lastSeen': ServerValue.timestamp,
     });
   }
 
   void setOffline(String uid) {
-    _db.child('users/$uid').update({
+    _db.child('presence/$uid').update({
       'isOnline': false,
       'lastSeen': ServerValue.timestamp,
+    });
+  }
+
+  Stream<Map<String, dynamic>> presenceStream(String uid) {
+    return _db.child('presence/$uid').onValue.map((e) {
+      if (!e.snapshot.exists) return {'isOnline': false, 'lastSeen': 0};
+      return Map<String, dynamic>.from(e.snapshot.value as Map);
     });
   }
 
@@ -153,9 +117,7 @@ class DatabaseService {
     final map = snap.value as Map;
     for (final entry in map.entries) {
       if (!(entry.value['isSeen'] as bool? ?? false)) {
-        await _db
-            .child('messages/$chatId/${entry.key}')
-            .update({'isSeen': true});
+        await _db.child('messages/$chatId/${entry.key}').update({'isSeen': true});
       }
     }
   }
@@ -166,9 +128,7 @@ class DatabaseService {
     String uid,
     String emoji,
   ) async {
-    await _db
-        .child('messages/$chatId/$messageId/reactions/$uid')
-        .set(emoji);
+    await _db.child('messages/$chatId/$messageId/reactions/$uid').set(emoji);
   }
 
   // ─── Unread Count ─────────────────────────────────────────
@@ -181,9 +141,7 @@ class DatabaseService {
         .map((event) {
       if (!event.snapshot.exists) return 0;
       final map = event.snapshot.value as Map;
-      return map.values
-          .where((v) => !(v['isSeen'] as bool? ?? false))
-          .length;
+      return map.values.where((v) => !(v['isSeen'] as bool? ?? false)).length;
     });
   }
 }

@@ -1,14 +1,19 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import '../services/auth_service.dart';
-import '../services/firestore_service.dart';
 import '../models/user_model.dart';
+import '../services/auth_service.dart';
+import '../services/database_service.dart';
+import '../services/firestore_service.dart';
+import '../services/secure_storage_service.dart';
 
 enum AuthState { idle, loading, otpSent, verified, error }
 
 class AuthViewModel extends ChangeNotifier {
   final AuthService _authService = AuthService();
   final FirestoreService _firestoreService = FirestoreService();
+  final SecureStorageService _secureStorage = SecureStorageService();
+  final DatabaseService _dbService = DatabaseService();
 
   AuthState _state = AuthState.idle;
   String _errorMessage = '';
@@ -17,56 +22,92 @@ class AuthViewModel extends ChangeNotifier {
   bool _isNewUser = false;
   String _pendingEmail = '';
   String _pendingPhone = '';
-
-  // Holds the resolved UID — either from Firebase user or mock
   String _resolvedUid = '';
 
   AuthState get state => _state;
   String get errorMessage => _errorMessage;
   UserModel? get currentUser => _currentUser;
   bool get isNewUser => _isNewUser;
-
-  // Returns real Firebase user if available, else null (mock mode)
   User? get firebaseUser => _authService.currentUser;
-
-  // Always returns a valid UID (real or mock)
-  String get uid => _resolvedUid.isNotEmpty
-      ? _resolvedUid
-      : (firebaseUser?.uid ?? '');
+  String get uid =>
+      _resolvedUid.isNotEmpty ? _resolvedUid : (firebaseUser?.uid ?? '');
 
   void _setState(AuthState s) {
     _state = s;
     notifyListeners();
   }
 
-  // ─── Send OTP ─────────────────────────────────────────────
+  // ─── Check for existing session on app start ───────────────
+  Future<bool> checkExistingSession() async {
+    final user = _authService.currentUser;
+    if (user != null) {
+      _resolvedUid = user.uid;
+      await _loadAndRestoreSession(user.uid);
+      return true;
+    }
+    // Check cached auth state
+    final cached = await _secureStorage.getAuthState();
+    if (cached != null && cached['uid'] != null) {
+      final uid = cached['uid'] as String;
+      final isNewUser = cached['isNewUser'] as bool? ?? false;
+      // Verify the user still exists
+      final profile = await _firestoreService.getUser(uid);
+      if (profile != null) {
+        _resolvedUid = uid;
+        _isNewUser = isNewUser;
+        _currentUser = profile;
+        _setState(AuthState.verified);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<void> _loadAndRestoreSession(String userUid) async {
+    _currentUser = await _firestoreService.getUser(userUid);
+    _isNewUser = _currentUser == null;
+    // Set user online
+    if (_currentUser != null) {
+      _dbService.setOnline(userUid, _currentUser!.name);
+    }
+    // Save session locally
+    if (_currentUser != null) {
+      await _secureStorage.cacheUserProfile(_currentUser!.toMap());
+    }
+    notifyListeners();
+  }
+
+  // ─── Send OTP via Firebase Phone Auth ──────────────────────
   Future<void> sendOtp(String phoneNumber) async {
     _pendingPhone = phoneNumber;
     _setState(AuthState.loading);
-    await _authService.sendOtp(
-      phoneNumber: phoneNumber,
-      onCodeSent: (verificationId, _) {
-        _verificationId = verificationId;
-        _setState(AuthState.otpSent);
-      },
-      onError: (error) {
-        _errorMessage = error;
-        _setState(AuthState.error);
-      },
-      onAutoVerified: (_) {},
-    );
+    try {
+      await _authService.sendOtp(
+        phoneNumber: phoneNumber,
+        onCodeSent: (verificationId, _) {
+          _verificationId = verificationId;
+          _setState(AuthState.otpSent);
+        },
+        onError: (error) {
+          _errorMessage = error;
+          _setState(AuthState.error);
+        },
+        onAutoVerified: (_) {},
+      );
+    } catch (e) {
+      _errorMessage = 'Failed to send OTP. Please try again.';
+      _setState(AuthState.error);
+    }
   }
 
-  // ─── Verify OTP ───────────────────────────────────────────
+  // ─── Verify OTP ────────────────────────────────────────────
   Future<void> verifyOtp(String otp) async {
     _setState(AuthState.loading);
     try {
-      debugPrint('AuthViewModel.verifyOtp: calling authService.verifyOtp...');
       final result = await _authService.verifyOtp(
         verificationId: _verificationId,
         otp: otp,
       );
-      debugPrint('AuthViewModel.verifyOtp: result.user.uid=${result?.user?.uid}');
 
       if (result?.user != null) {
         _resolvedUid = result!.user!.uid;
@@ -76,40 +117,43 @@ class AuthViewModel extends ChangeNotifier {
         _setState(AuthState.error);
       }
     } on FirebaseAuthException catch (e) {
-      debugPrint('AuthViewModel.verifyOtp FirebaseAuthException: ${e.code} ${e.message}');
       _errorMessage = e.code == 'invalid-verification-code'
-          ? 'Invalid OTP. Please enter 12345.'
+          ? 'Invalid OTP. Please try again.'
           : e.message ?? 'Authentication failed.';
       _setState(AuthState.error);
     } catch (e) {
-      debugPrint('AuthViewModel.verifyOtp error: $e');
       _errorMessage = 'Something went wrong. Please try again.';
       _setState(AuthState.error);
     }
   }
 
-  // ─── Check if user profile exists in Firestore ────────────
+  // ─── Check if user profile exists in Firestore ─────────────
   Future<void> _checkUserExists(String userUid) async {
-    debugPrint('AuthViewModel._checkUserExists: uid=$userUid');
     try {
       final existing = await _firestoreService.getUser(userUid);
       _isNewUser = existing == null;
-      _currentUser = existing;
-      debugPrint('AuthViewModel._checkUserExists: isNewUser=$_isNewUser');
+      _currentUser = existing ?? _currentUser;
+
+      if (!_isNewUser && existing != null) {
+        // Existing user --- restore old chats and go to home
+        _dbService.setOnline(userUid, existing.name);
+        await _secureStorage.saveAuthState(userUid, false);
+        await _secureStorage.cacheUserProfile(existing.toMap());
+      }
+      _setState(AuthState.verified);
     } catch (e) {
-      debugPrint('AuthViewModel._checkUserExists error: $e — treating as new user');
       _isNewUser = true;
       _currentUser = null;
+      _setState(AuthState.verified);
     }
-    _setState(AuthState.verified);
   }
 
-  // ─── Save Email ───────────────────────────────────────────
+  // ─── Save Email (for new users) ────────────────────────────
   Future<void> saveEmail(String email) async {
     _pendingEmail = email.trim();
   }
 
-  // ─── Save Profile to Firestore ────────────────────────────
+  // ─── Save Profile to Firestore (for new users) ─────────────
   Future<void> saveProfile({
     required String name,
     required String phone,
@@ -117,9 +161,8 @@ class AuthViewModel extends ChangeNotifier {
     required String profileImageUrl,
   }) async {
     final userUid = uid;
-    if (userUid.isEmpty) {
-      throw Exception('User not authenticated. Please login again.');
-    }
+    if (userUid.isEmpty) throw Exception('User not authenticated.');
+
     final now = DateTime.now().millisecondsSinceEpoch;
     final user = UserModel(
       uid: userUid,
@@ -129,34 +172,52 @@ class AuthViewModel extends ChangeNotifier {
       profileImage: profileImageUrl,
       createdAt: now,
       lastSeen: now,
+      isOnline: true,
     );
-    debugPrint('AuthViewModel.saveProfile: saving uid=$userUid name=${user.name}');
+
     await _firestoreService.createUser(user);
     _currentUser = user;
-    debugPrint('AuthViewModel.saveProfile: saved successfully ✓');
+    _dbService.setOnline(userUid, name);
+    await _secureStorage.saveAuthState(userUid, true);
+    await _secureStorage.cacheUserProfile(user.toMap());
     notifyListeners();
   }
 
-  // ─── Load Current User ────────────────────────────────────
+  // ─── Load Current User ─────────────────────────────────────
   Future<void> loadCurrentUser() async {
     final userUid = uid;
     if (userUid.isEmpty) return;
     try {
-      _currentUser = await _firestoreService.getUser(userUid);
-      notifyListeners();
+      final cached = await _secureStorage.getCachedUserProfile();
+      if (cached != null) {
+        _currentUser = UserModel.fromMap(cached, userUid);
+        notifyListeners();
+      }
+      final fresh = await _firestoreService.getUser(userUid);
+      if (fresh != null) {
+        _currentUser = fresh;
+        await _secureStorage.cacheUserProfile(fresh.toMap());
+        notifyListeners();
+      }
     } catch (e) {
-      debugPrint('AuthViewModel.loadCurrentUser error: $e');
+      debugPrint('loadCurrentUser error: $e');
     }
   }
 
+  // ─── Update Profile Fields ─────────────────────────────────
   Future<void> updateUserField(String userUid, Map<String, dynamic> data) async {
     await _firestoreService.updateUser(userUid, data);
     await loadCurrentUser();
   }
 
-  // ─── Sign Out ─────────────────────────────────────────────
+  // ─── Sign Out ──────────────────────────────────────────────
   Future<void> signOut() async {
+    final uid = _resolvedUid;
+    if (uid.isNotEmpty) {
+      _dbService.setOffline(uid);
+    }
     await _authService.signOut();
+    await _secureStorage.clearAuthState();
     _currentUser = null;
     _pendingEmail = '';
     _pendingPhone = '';

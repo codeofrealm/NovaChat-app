@@ -35,6 +35,7 @@ class ProfileViewModel extends ChangeNotifier {
       if (name != null) data['name'] = name;
       if (about != null) data['about'] = about;
       if (profileImage != null) data['profileImage'] = profileImage;
+      data['lastSeen'] = DateTime.now().millisecondsSinceEpoch;
       await _db.updateUser(uid, data);
     } finally {
       _isLoading = false;

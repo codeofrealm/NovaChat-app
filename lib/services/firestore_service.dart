@@ -42,7 +42,18 @@ class FirestoreService {
     final all = await getAllUsers(currentUid);
     final q = query.toLowerCase();
     return all
-        .where((u) => u.name.toLowerCase().contains(q) || u.phone.contains(q))
+        .where((u) =>
+            u.name.toLowerCase().contains(q) ||
+            u.phone.contains(q) ||
+            u.email.toLowerCase().contains(q))
         .toList();
+  }
+
+  Future<void> createMessage(
+    String chatId,
+    String messageId,
+    Map<String, dynamic> data,
+  ) async {
+    await _fs.collection('chats').doc(chatId).collection('messages').doc(messageId).set(data);
   }
 }

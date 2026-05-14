@@ -19,18 +19,21 @@ class _EmailEntryScreenState extends State<EmailEntryScreen>
   final _formKey = GlobalKey<FormState>();
   late AnimationController _animController;
   late Animation<Offset> _slideAnim;
+  late Animation<double> _fadeAnim;
+  String? _inlineError;
 
   @override
   void initState() {
     super.initState();
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 700),
     )..forward();
     _slideAnim = Tween<Offset>(
-      begin: const Offset(0, 0.2),
+      begin: const Offset(0, 0.3),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic));
+    _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
   }
 
   @override
@@ -42,12 +45,13 @@ class _EmailEntryScreenState extends State<EmailEntryScreen>
 
   Future<void> _continue() async {
     if (!_formKey.currentState!.validate()) return;
+    final email = _emailController.text.trim();
     final vm = context.read<AuthViewModel>();
-    await vm.saveEmail(_emailController.text.trim());
+    await vm.saveEmail(email);
     if (!mounted) return;
     Navigator.of(context).push(
       AppUtils.slideRoute(
-        ProfileSetupScreen(email: _emailController.text.trim()),
+        ProfileSetupScreen(email: email),
       ),
     );
   }
@@ -56,29 +60,34 @@ class _EmailEntryScreenState extends State<EmailEntryScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0),
       body: SafeArea(
-        child: SlideTransition(
-          position: _slideAnim,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 16),
-                  _buildHeader(),
-                  const SizedBox(height: 40),
-                  _buildEmailField(),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Your email is used for account recovery and notifications.',
-                    style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 40),
-                  PrimaryButton(label: 'Continue', onPressed: _continue),
-                ],
+        child: FadeTransition(
+          opacity: _fadeAnim,
+          child: SlideTransition(
+            position: _slideAnim,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 24),
+                    _buildHeader(),
+                    const SizedBox(height: 40),
+                    _buildEmailField(),
+                    const SizedBox(height: 12),
+                    if (_inlineError != null) _buildInlineError(),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Your email is used for account recovery and notifications.',
+                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 32),
+                    PrimaryButton(label: 'Continue', onPressed: _continue),
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
             ),
           ),
@@ -117,16 +126,54 @@ class _EmailEntryScreenState extends State<EmailEntryScreen>
     return TextFormField(
       controller: _emailController,
       keyboardType: TextInputType.emailAddress,
+      textInputAction: TextInputAction.done,
       style: AppTextStyles.bodyLarge,
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         hintText: 'Enter your email',
-        prefixIcon: Icon(Icons.email_outlined, color: AppColors.textHint),
+        prefixIcon: const Icon(Icons.email_outlined, color: AppColors.textHint),
+        filled: true,
+        fillColor: AppColors.background,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.error),
+        ),
       ),
       validator: (v) {
         if (v == null || v.trim().isEmpty) return 'Email is required';
         if (!AppUtils.isValidEmail(v.trim())) return 'Enter a valid email';
         return null;
       },
+    );
+  }
+
+  Widget _buildInlineError() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              color: AppColors.error, size: 16),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              _inlineError!,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.error,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

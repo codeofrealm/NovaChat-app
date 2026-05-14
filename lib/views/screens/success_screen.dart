@@ -15,19 +15,28 @@ class _SuccessScreenState extends State<SuccessScreen>
   late AnimationController _controller;
   late Animation<double> _scaleAnim;
   late Animation<double> _fadeAnim;
+  late Animation<Offset> _checkAnim;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
-    )..forward();
+      duration: const Duration(milliseconds: 1000),
+    );
     _scaleAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
     );
     _fadeAnim = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
-    Future.delayed(const Duration(milliseconds: 2500), () {
+    _checkAnim = Tween<Offset>(
+      begin: const Offset(0, 0.5),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.5, 1.0, curve: Curves.easeOutCubic),
+    ));
+    _controller.forward();
+    Future.delayed(const Duration(milliseconds: 2800), () {
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           AppUtils.fadeRoute(const HomeScreen()),
@@ -53,42 +62,45 @@ class _SuccessScreenState extends State<SuccessScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ScaleTransition(
-                scale: _scaleAnim,
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.success, Color(0xFF34D399)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.success.withOpacity(0.4),
-                        blurRadius: 30,
-                        offset: const Offset(0, 12),
+              SlideTransition(
+                position: _checkAnim,
+                child: ScaleTransition(
+                  scale: _scaleAnim,
+                  child: Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.success, Color(0xFF34D399)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.check_rounded,
-                    color: Colors.white,
-                    size: 60,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.success.withOpacity(0.4),
+                          blurRadius: 40,
+                          offset: const Offset(0, 16),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: 64,
+                    ),
                   ),
                 ),
               ),
               const SizedBox(height: 32),
               const Text(
-                'Welcome to NovaChat! 🎉',
-                style: AppTextStyles.displayMedium,
+                'Welcome to\nNovaChat! 🎉',
                 textAlign: TextAlign.center,
+                style: AppTextStyles.displayMedium,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               const Text(
-                'Your account is ready.\nStart chatting now!',
+                'Your account has been created successfully.\nStart connecting with people around you!',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,
@@ -96,15 +108,21 @@ class _SuccessScreenState extends State<SuccessScreen>
                   height: 1.6,
                 ),
               ),
-              const SizedBox(height: 40),
-              const SizedBox(
-                width: 32,
-                height: 32,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: AppColors.primary,
+              const SizedBox(height: 48),
+              FadeTransition(
+                  opacity: _controller,
+                  child: Opacity(
+                    opacity: _controller.value.clamp(0.5, 1.0),
+                    child: const SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
             ],
           ),
         ),

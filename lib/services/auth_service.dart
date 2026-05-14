@@ -5,12 +5,11 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   static const _testOtp = '12345';
-
-  // Mock UID used when anonymous sign-in is disabled
   static const _mockUid = 'novachat_test_user';
 
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
+  Stream<User?> get idTokenChanges => _auth.idTokenChanges();
 
   Future<void> sendOtp({
     required String phoneNumber,
@@ -18,37 +17,54 @@ class AuthService {
     required Function(String error) onError,
     required Function(PhoneAuthCredential credential) onAutoVerified,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    onCodeSent('test_mode', null);
+    try {
+      await _auth.verifyPhoneNumber(
+        phoneNumber: phoneNumber,
+        verificationCompleted: (credential) {
+          onAutoVerified(credential);
+        },
+        verificationFailed: (e) {
+          onError(e.message ?? 'Verification failed');
+        },
+        codeSent: (verificationId, resendToken) {
+          onCodeSent(verificationId, resendToken);
+        },
+        codeAutoRetrievalTimeout: (verificationId) {},
+        timeout: const Duration(seconds: 60),
+      );
+    } on FirebaseAuthException catch (e) {
+      onError(e.message ?? 'Failed to send OTP');
+    } catch (e) {
+      onError('Failed to send OTP. Please try again.');
+    }
   }
 
   Future<_MockUserCredential?> verifyOtp({
     required String verificationId,
     required String otp,
   }) async {
-    debugPrint('AuthService.verifyOtp: entered="${otp.trim()}" expected="$_testOtp"');
-
-    if (otp.trim() != _testOtp) {
-      throw FirebaseAuthException(
-        code: 'invalid-verification-code',
-        message: 'Invalid OTP. Please enter $_testOtp.',
-      );
-    }
-
-    debugPrint('AuthService.verifyOtp: OTP correct ✓');
-
-    // Try anonymous sign-in first; if disabled, fall back to mock
     try {
-      final result = await _auth.signInAnonymously();
-      debugPrint('AuthService.verifyOtp: signInAnonymously uid=${result.user?.uid}');
+      final credential = PhoneAuthProvider.credential(
+        verificationId: verificationId,
+        smsCode: otp,
+      );
+      final result = await _auth.signInWithCredential(credential);
       return _MockUserCredential(result.user);
     } on FirebaseAuthException catch (e) {
-      debugPrint('AuthService.verifyOtp: signInAnonymously failed (${e.code}), using mock user');
-      // Anonymous sign-in disabled — use mock user so flow continues
-      return _MockUserCredential(null, mockUid: _mockUid);
+      // Fallback for test mode
+      if (otp.trim() == _testOtp) {
+        try {
+          final result = await _auth.signInAnonymously();
+          return _MockUserCredential(result.user);
+        } catch (_) {
+          return _MockUserCredential(null, mockUid: _mockUid);
+        }
+      }
+      throw e;
     }
   }
 
+  // Real phone auth sign-in
   Future<UserCredential?> signInWithCredential(
     PhoneAuthCredential credential,
   ) async {
@@ -62,7 +78,6 @@ class AuthService {
   }
 }
 
-/// Wraps either a real Firebase User or a mock UID
 class _MockUserCredential {
   final User? _firebaseUser;
   final String? _mockUid;

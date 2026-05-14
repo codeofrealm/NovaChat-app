@@ -33,10 +33,14 @@ dependencies:
   pinput: ^5.0.0
   emoji_picker_flutter: ^4.4.0
   flutter_svg: ^2.0.10+1
+  pull_to_refresh: ^2.0.0
 
   # Audio
   flutter_sound: ^9.2.13
   permission_handler: ^11.3.1
+
+  # Notifications
+  flutter_local_notifications: ^17.0.0
 
   # Utils
   shared_preferences: ^2.3.2

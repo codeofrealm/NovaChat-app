@@ -7,6 +7,9 @@ class PrimaryButton extends StatefulWidget {
   final bool isLoading;
   final IconData? icon;
   final Color? color;
+  final double? width;
+  final double height;
+  final double borderRadius;
 
   const PrimaryButton({
     super.key,
@@ -15,6 +18,9 @@ class PrimaryButton extends StatefulWidget {
     this.isLoading = false,
     this.icon,
     this.color,
+    this.width,
+    this.height = 54,
+    this.borderRadius = 14,
   });
 
   @override
@@ -25,6 +31,7 @@ class _PrimaryButtonState extends State<PrimaryButton>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnim;
+  late Animation<Offset> _shimmerAnim;
 
   @override
   void initState() {
@@ -37,6 +44,15 @@ class _PrimaryButtonState extends State<PrimaryButton>
       value: 1.0,
     );
     _scaleAnim = _controller;
+    _shimmerAnim = Tween<Offset>(
+      begin: const Offset(-1.5, 0),
+      end: const Offset(1.5, 0),
+    ).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeInOut,
+      ),
+    );
   }
 
   @override
@@ -50,6 +66,15 @@ class _PrimaryButtonState extends State<PrimaryButton>
 
   @override
   Widget build(BuildContext context) {
+    final colors = widget.onPressed == null
+        ? [AppColors.textHint.withOpacity(0.5), AppColors.textHint.withOpacity(0.5)]
+        : [
+            widget.color ?? AppColors.primary,
+            widget.color != null
+                ? widget.color!.withOpacity(0.8)
+                : AppColors.primaryLight,
+          ];
+
     return GestureDetector(
       onTapDown: _onTapDown,
       onTapUp: _onTapUp,
@@ -58,54 +83,82 @@ class _PrimaryButtonState extends State<PrimaryButton>
       child: ScaleTransition(
         scale: _scaleAnim,
         child: Container(
-          height: 54,
-          width: double.infinity,
+          width: widget.width,
+          height: widget.height,
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: widget.onPressed == null
-                  ? [AppColors.textHint, AppColors.textHint]
-                  : [
-                      widget.color ?? AppColors.primary,
-                      widget.color != null
-                          ? widget.color!
-                          : AppColors.primaryLight,
-                    ],
+              colors: colors,
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
             ),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(widget.borderRadius),
             boxShadow: widget.onPressed == null
                 ? []
                 : [
                     BoxShadow(
                       color: (widget.color ?? AppColors.primary)
-                          .withOpacity(0.35),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
+                          .withOpacity(0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
                     ),
                   ],
           ),
-          child: Center(
-            child: widget.isLoading
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2.5,
+          child: widget.isLoading
+              ? Stack(
+                  children: [
+                    Positioned.fill(
+                      child: AnimatedBuilder(
+                        animation: _controller,
+                        builder: (_, __) => SlideTransition(
+                          position: _shimmerAnim,
+                          child: FractionallySizedBox(
+                            widthFactor: 0.3,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.white.withOpacity(0),
+                                    Colors.white.withOpacity(0.3),
+                                    Colors.white.withOpacity(0),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  )
-                : Row(
+                    const Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : Center(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (widget.icon != null) ...[
-                        Icon(widget.icon, color: Colors.white, size: 20),
+                        Icon(widget.icon,
+                            color: Colors.white, size: 20),
                         const SizedBox(width: 8),
                       ],
-                      Text(widget.label, style: AppTextStyles.labelLarge),
+                      Text(widget.label,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                            letterSpacing: 0.3,
+                          )),
                     ],
                   ),
-          ),
+                ),
         ),
       ),
     );

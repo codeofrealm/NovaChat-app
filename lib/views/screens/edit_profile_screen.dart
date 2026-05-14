@@ -17,14 +17,27 @@ class EditProfileScreen extends StatefulWidget {
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> {
+class _EditProfileScreenState extends State<EditProfileScreen>
+    with SingleTickerProviderStateMixin {
   final _nameController = TextEditingController();
   final _aboutController = TextEditingController();
   File? _imageFile;
+  late AnimationController _animController;
+  late Animation<Offset> _slideAnim;
+  late Animation<double> _fadeAnim;
 
   @override
   void initState() {
     super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..forward();
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.2),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic));
+    _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
     final user = context.read<AuthViewModel>().currentUser;
     if (user != null) {
       _nameController.text = user.name;
@@ -36,6 +49,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void dispose() {
     _nameController.dispose();
     _aboutController.dispose();
+    _animController.dispose();
     super.dispose();
   }
 
@@ -55,7 +69,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (uid.isEmpty) return;
 
     String? imageUrl;
-    // Skip Storage upload for mock users (no real Firebase Auth session)
     if (_imageFile != null && authVm.firebaseUser != null) {
       imageUrl = await profileVm.uploadProfileImage(uid, _imageFile!);
     }
@@ -69,7 +82,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     await authVm.loadCurrentUser();
     if (mounted) {
-      AppUtils.showSnackBar(context, 'Profile updated!');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Profile updated!'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
       Navigator.pop(context);
     }
   }
@@ -77,39 +97,57 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Edit Profile', style: AppTextStyles.headlineMedium),
         backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.arrow_back_ios_rounded,
+                size: 18, color: AppColors.textPrimary),
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Edit Profile', style: AppTextStyles.headlineMedium),
+        actions: [
+          TextButton(
+            onPressed: _save,
+            child: const Text('Save',
+                style: TextStyle(
+                    color: AppColors.primary, fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
-      body: Consumer<AuthViewModel>(
-        builder: (_, authVm, __) {
-          final user = authVm.currentUser;
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+      body: FadeTransition(
+        opacity: _fadeAnim,
+        child: SlideTransition(
+          position: _slideAnim,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
             child: Column(
               children: [
-                _buildAvatarSection(user),
+                const SizedBox(height: 24),
+                _buildAvatarSection(),
                 const SizedBox(height: 32),
                 _buildFields(),
                 const SizedBox(height: 32),
-                Consumer<ProfileViewModel>(
-                  builder: (_, vm, __) => PrimaryButton(
-                    label: 'Save Changes',
-                    isLoading: vm.isLoading,
-                    onPressed: _save,
-                  ),
-                ),
               ],
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildAvatarSection(UserModel? user) {
+  Widget _buildAvatarSection() {
     return Center(
       child: GestureDetector(
         onTap: _pickImage,
@@ -117,28 +155,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           children: [
             _imageFile != null
                 ? CircleAvatar(
-                    radius: 52,
+                    radius: 56,
                     backgroundImage: FileImage(_imageFile!),
+                    backgroundColor: AppColors.primarySoft,
                   )
-                : UserAvatar(
-                    imageUrl: user?.profileImage ?? '',
-                    name: user?.name ?? '',
-                    radius: 52,
+                : Consumer<AuthViewModel>(
+                    builder: (_, authVm, __) => UserAvatar(
+                      imageUrl: authVm.currentUser?.profileImage ?? '',
+                      name: authVm.currentUser?.name ?? '',
+                      radius: 56,
+                    ),
                   ),
             Positioned(
               right: 0,
               bottom: 0,
               child: Container(
-                width: 34,
-                height: 34,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [AppColors.primary, AppColors.primaryLight],
                   ),
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(color: Colors.white, width: 2.5),
                 ),
-                child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
+                child: const Icon(Icons.camera_alt_rounded,
+                    color: Colors.white, size: 18),
               ),
             ),
           ],
@@ -150,23 +192,45 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget _buildFields() {
     return Column(
       children: [
-        TextFormField(
-          controller: _nameController,
-          style: AppTextStyles.bodyLarge,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Name',
-            prefixIcon: Icon(Icons.person_outline_rounded, color: AppColors.textHint),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.divider.withOpacity(0.5)),
+          ),
+          child: TextFormField(
+            controller: _nameController,
+            style: AppTextStyles.bodyLarge,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              hintText: 'Name',
+              prefixIcon:
+                  Icon(Icons.person_outline_rounded, color: AppColors.textHint),
+              border: InputBorder.none,
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
           ),
         ),
-        const SizedBox(height: 16),
-        TextFormField(
-          controller: _aboutController,
-          style: AppTextStyles.bodyLarge,
-          maxLength: 100,
-          decoration: const InputDecoration(
-            labelText: 'About',
-            prefixIcon: Icon(Icons.info_outline_rounded, color: AppColors.textHint),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.divider.withOpacity(0.5)),
+          ),
+          child: TextFormField(
+            controller: _aboutController,
+            style: AppTextStyles.bodyLarge,
+            maxLength: 100,
+            decoration: const InputDecoration(
+              hintText: 'About',
+              prefixIcon:
+                  Icon(Icons.info_outline_rounded, color: AppColors.textHint),
+              border: InputBorder.none,
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
           ),
         ),
       ],

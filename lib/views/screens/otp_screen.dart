@@ -18,12 +18,13 @@ class OtpScreen extends StatefulWidget {
 }
 
 class _OtpScreenState extends State<OtpScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final _otpController = TextEditingController();
   final _pinputFocusNode = FocusNode();
   int _secondsLeft = 60;
   Timer? _timer;
   late AnimationController _successController;
+  late AnimationController _shakeController;
   bool _showSuccess = false;
   bool _isVerifying = false;
   String? _inlineError;
@@ -33,7 +34,11 @@ class _OtpScreenState extends State<OtpScreen>
     super.initState();
     _successController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 700),
+    );
+    _shakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
     );
     _startTimer();
   }
@@ -42,7 +47,10 @@ class _OtpScreenState extends State<OtpScreen>
     _timer?.cancel();
     setState(() => _secondsLeft = 60);
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) { t.cancel(); return; }
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
       if (_secondsLeft == 0) {
         t.cancel();
       } else {
@@ -51,17 +59,16 @@ class _OtpScreenState extends State<OtpScreen>
     });
   }
 
-  // Called both from onCompleted and button press
   Future<void> _verify([String? completedPin]) async {
-    // Use completedPin from onCompleted, or read from controller
     final otp = (completedPin ?? _otpController.text).trim();
 
     if (otp.length < 5) {
       setState(() => _inlineError = 'Please enter the complete 5-digit code.');
+      _shakeController.forward(from: 0);
       return;
     }
 
-    if (_isVerifying) return; // prevent double-tap
+    if (_isVerifying) return;
     setState(() {
       _isVerifying = true;
       _inlineError = null;
@@ -76,7 +83,7 @@ class _OtpScreenState extends State<OtpScreen>
     if (vm.state == AuthState.verified) {
       setState(() => _showSuccess = true);
       _successController.forward();
-      await Future.delayed(const Duration(milliseconds: 900));
+      await Future.delayed(const Duration(milliseconds: 1000));
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         AppUtils.fadeRoute(
@@ -88,6 +95,7 @@ class _OtpScreenState extends State<OtpScreen>
       setState(() => _inlineError = vm.errorMessage);
       _otpController.clear();
       _pinputFocusNode.requestFocus();
+      _shakeController.forward(from: 0);
       vm.clearError();
     }
   }
@@ -107,6 +115,7 @@ class _OtpScreenState extends State<OtpScreen>
     _otpController.dispose();
     _pinputFocusNode.dispose();
     _successController.dispose();
+    _shakeController.dispose();
     super.dispose();
   }
 
@@ -114,14 +123,13 @@ class _OtpScreenState extends State<OtpScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
               _buildHeader(),
               const SizedBox(height: 32),
               _buildTestModeBanner(),
@@ -135,8 +143,9 @@ class _OtpScreenState extends State<OtpScreen>
               if (_showSuccess) _buildSuccessAnimation(),
               Consumer<AuthViewModel>(
                 builder: (_, vm, __) => PrimaryButton(
-                  label: 'Verify OTP',
-                  isLoading: vm.state == AuthState.loading || _isVerifying,
+                  label: 'Verify Code',
+                  isLoading:
+                      vm.state == AuthState.loading || _isVerifying,
                   onPressed: (vm.state == AuthState.loading || _isVerifying)
                       ? null
                       : () => _verify(),
@@ -196,7 +205,7 @@ class _OtpScreenState extends State<OtpScreen>
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: AppColors.warning.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
       ),
       child: const Row(
@@ -220,16 +229,16 @@ class _OtpScreenState extends State<OtpScreen>
 
   Widget _buildOtpField() {
     final defaultTheme = PinTheme(
-      width: 56,
-      height: 60,
+      width: 58,
+      height: 62,
       textStyle: const TextStyle(
-        fontSize: 22,
+        fontSize: 24,
         fontWeight: FontWeight.w700,
         color: AppColors.textPrimary,
       ),
       decoration: BoxDecoration(
         color: AppColors.background,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.divider, width: 1.5),
       ),
     );
@@ -239,28 +248,31 @@ class _OtpScreenState extends State<OtpScreen>
       color: AppColors.error.withValues(alpha: 0.04),
     );
 
-    return Pinput(
-      controller: _otpController,
-      focusNode: _pinputFocusNode,
-      length: 5,
-      defaultPinTheme: defaultTheme,
-      focusedPinTheme: defaultTheme.copyDecorationWith(
-        border: Border.all(color: AppColors.primary, width: 2),
-        color: AppColors.primarySoft,
+    return FadeTransition(
+      opacity: _shakeController.drive(
+        Tween<double>(begin: 1, end: 0.92)),
+      child: Pinput(
+        controller: _otpController,
+        focusNode: _pinputFocusNode,
+        length: 5,
+        defaultPinTheme: defaultTheme,
+        focusedPinTheme: defaultTheme.copyDecorationWith(
+          border: Border.all(color: AppColors.primary, width: 2),
+          color: AppColors.primarySoft,
+        ),
+        submittedPinTheme: _inlineError != null
+            ? errorTheme
+            : defaultTheme.copyDecorationWith(
+                border: Border.all(color: AppColors.success, width: 1.5),
+                color: AppColors.success.withValues(alpha: 0.05),
+              ),
+        errorPinTheme: errorTheme,
+        onCompleted: (pin) => _verify(pin),
+        autofocus: true,
+        onChanged: (_) {
+          if (_inlineError != null) setState(() => _inlineError = null);
+        },
       ),
-      submittedPinTheme: _inlineError != null
-          ? errorTheme
-          : defaultTheme.copyDecorationWith(
-              border: Border.all(color: AppColors.success, width: 1.5),
-              color: AppColors.success.withValues(alpha: 0.05),
-            ),
-      errorPinTheme: errorTheme,
-      // Pass the completed pin directly to _verify
-      onCompleted: (pin) => _verify(pin),
-      autofocus: true,
-      onChanged: (_) {
-        if (_inlineError != null) setState(() => _inlineError = null);
-      },
     );
   }
 
@@ -329,17 +341,26 @@ class _OtpScreenState extends State<OtpScreen>
           curve: Curves.elasticOut,
         ),
         child: Container(
-          width: 72,
-          height: 72,
+          width: 80,
+          height: 80,
           margin: const EdgeInsets.only(bottom: 24),
           decoration: BoxDecoration(
-            color: AppColors.success.withValues(alpha: 0.1),
+            gradient: const LinearGradient(
+              colors: [AppColors.success, Color(0xFF34D399)],
+            ),
             shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.success.withOpacity(0.4),
+                blurRadius: 30,
+                offset: const Offset(0, 12),
+              ),
+            ],
           ),
           child: const Icon(
-            Icons.check_circle_rounded,
-            color: AppColors.success,
-            size: 44,
+            Icons.check_rounded,
+            color: Colors.white,
+            size: 48,
           ),
         ),
       ),

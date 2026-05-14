@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
+import 'services/network_service.dart';
 import 'services/notification_service.dart';
 import 'utils/app_theme.dart';
 import 'viewmodels/auth_viewmodel.dart';
@@ -25,6 +27,7 @@ void main() async {
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
     ),
   );
 
@@ -38,6 +41,9 @@ void main() async {
 
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   await NotificationService().initialize();
+
+  // Initialize network service
+  NetworkService().init();
 
   runApp(const NovaChatApp());
 }
@@ -59,6 +65,14 @@ class NovaChatApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         home: const SplashScreen(),
+        builder: (context, child) {
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: const TextScaler.linear(1.0),
+            ),
+            child: child!,
+          );
+        },
       ),
     );
   }

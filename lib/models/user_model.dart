@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class UserModel {
   final String uid;
   final String name;
@@ -22,6 +24,12 @@ class UserModel {
   });
 
   factory UserModel.fromMap(Map<dynamic, dynamic> map, String uid) {
+    int _toInt(dynamic v) {
+      if (v is int) return v;
+      if (v is Timestamp) return v.millisecondsSinceEpoch;
+      return 0;
+    }
+
     return UserModel(
       uid: uid,
       name: map['name'] ?? '',
@@ -30,8 +38,8 @@ class UserModel {
       profileImage: map['profileImage'] ?? '',
       about: map['about'] ?? 'Hey there! I am using NovaChat.',
       isOnline: map['isOnline'] ?? false,
-      lastSeen: map['lastSeen'] ?? 0,
-      createdAt: map['createdAt'] ?? 0,
+      lastSeen: _toInt(map['lastSeen']),
+      createdAt: _toInt(map['createdAt']),
     );
   }
 

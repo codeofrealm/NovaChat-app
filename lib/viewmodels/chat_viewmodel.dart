@@ -4,11 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import '../models/message_model.dart';
 import '../services/database_service.dart';
-import '../services/storage_service.dart';
 
 class ChatViewModel extends ChangeNotifier {
   final DatabaseService _db = DatabaseService();
-  final StorageService _storage = StorageService();
   final _uuid = const Uuid();
 
   List<MessageModel> _messages = [];
@@ -30,7 +28,7 @@ class ChatViewModel extends ChangeNotifier {
       _messages = msgs;
       _isLoading = false;
       notifyListeners();
-      // Mark messages as seen
+      // Mark messages as seen when chat is open
       _db.markMessagesSeen(chatId, currentUid);
     });
   }
@@ -49,6 +47,7 @@ class ChatViewModel extends ChangeNotifier {
       text: text.trim(),
       timestamp: DateTime.now().millisecondsSinceEpoch,
       isDelivered: true,
+      isSeen: false,
       type: MessageType.text,
     );
     await _db.sendMessage(chatId, msg);
@@ -64,7 +63,7 @@ class ChatViewModel extends ChangeNotifier {
     _uploadProgress = 0;
     notifyListeners();
     try {
-      final task = _storage.uploadChatImageWithProgress(chatId, imageFile);
+      final task = _db.uploadChatImageWithProgress(chatId, imageFile);
       task.snapshotEvents.listen((snap) {
         _uploadProgress = snap.bytesTransferred / snap.totalBytes;
         notifyListeners();
@@ -78,6 +77,7 @@ class ChatViewModel extends ChangeNotifier {
         imageUrl: url,
         timestamp: DateTime.now().millisecondsSinceEpoch,
         isDelivered: true,
+        isSeen: false,
         type: MessageType.image,
       );
       await _db.sendMessage(chatId, msg);
@@ -97,7 +97,7 @@ class ChatViewModel extends ChangeNotifier {
     _isSending = true;
     notifyListeners();
     try {
-      final url = await _storage.uploadVoiceMessage(chatId, voiceFile);
+      final url = await _db.uploadVoiceMessage(chatId, voiceFile);
       final msg = MessageModel(
         messageId: _uuid.v4(),
         senderId: senderId,
@@ -105,6 +105,7 @@ class ChatViewModel extends ChangeNotifier {
         voiceUrl: url,
         timestamp: DateTime.now().millisecondsSinceEpoch,
         isDelivered: true,
+        isSeen: false,
         type: MessageType.voice,
       );
       await _db.sendMessage(chatId, msg);
@@ -114,18 +115,56 @@ class ChatViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> sendEmojiMessage({
+    required String chatId,
+    required String senderId,
+    required String receiverId,
+    required String emoji,
+  }) async {
+    final msg = MessageModel(
+      messageId: _uuid.v4(),
+      senderId: senderId,
+      receiverId: receiverId,
+      text: emoji,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      isDelivered: true,
+      isSeen: false,
+      type: MessageType.emoji,
+    );
+    await _db.sendMessage(chatId, msg);
+  }
+
   Future<void> addReaction(
-    String chatId, String messageId, String uid, String emoji,
+    String chatId,
+    String messageId,
+    String uid,
+    String emoji,
   ) async {
     await _db.addReaction(chatId, messageId, uid, emoji);
+  }
+
+  Future<void> removeReaction(
+    String chatId,
+    String messageId,
+    String uid,
+  ) async {
+    await _db.removeReaction(chatId, messageId, uid);
   }
 
   void setTyping(String chatId, String uid, bool isTyping) {
     _db.setTyping(chatId, uid, isTyping);
   }
 
+  void clearTyping(String chatId, String uid) {
+    _db.clearTyping(chatId, uid);
+  }
+
   Stream<bool> typingStream(String chatId, String otherUid) =>
       _db.typingStream(chatId, otherUid);
+
+  Future<void> markSeen(String chatId, String currentUid) async {
+    await _db.markMessagesSeen(chatId, currentUid);
+  }
 
   @override
   void dispose() {

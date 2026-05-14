@@ -38,7 +38,14 @@ class AppUtils {
     return '$m:$s';
   }
 
-  // Generate chat ID from two UIDs
+  // Internal static version used by chat_input_bar
+  static String _formatDurationStatic(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  // Generate chat ID from two UIDs (deterministic: smaller_first)
   static String getChatId(String uid1, String uid2) {
     return uid1.compareTo(uid2) < 0 ? '${uid1}_$uid2' : '${uid2}_$uid1';
   }
@@ -56,23 +63,27 @@ class AppUtils {
     );
   }
 
-  // Smooth page route
+  // Smooth slide route
   static Route<T> slideRoute<T>(Widget page) {
     return PageRouteBuilder<T>(
       pageBuilder: (_, animation, __) => page,
-      transitionDuration: const Duration(milliseconds: 300),
+      transitionDuration: const Duration(milliseconds: 350),
       transitionsBuilder: (_, animation, __, child) {
         return SlideTransition(
           position: Tween<Offset>(
-            begin: const Offset(1.0, 0.0),
+            begin: const Offset(0.05, 0),
             end: Offset.zero,
           ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
-          child: child,
+          child: FadeTransition(
+            opacity: animation,
+            child: child,
+          ),
         );
       },
     );
   }
 
+  // Fade route
   static Route<T> fadeRoute<T>(Widget page) {
     return PageRouteBuilder<T>(
       pageBuilder: (_, animation, __) => page,
@@ -82,4 +93,7 @@ class AppUtils {
       },
     );
   }
+
+  // Custom curve for bouncy animations
+  static const bounceCurve = Curves.elasticOut;
 }

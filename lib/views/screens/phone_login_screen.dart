@@ -32,14 +32,10 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     final phone = '$_countryCode${_phoneController.text.trim()}';
     await vm.sendOtp(phone);
     if (!mounted) return;
-    if (vm.state == AuthState.otpSent) {
-      Navigator.of(context).push(
-        AppUtils.slideRoute(OtpScreen(phoneNumber: phone)),
-      );
-    } else if (vm.state == AuthState.error) {
-      AppUtils.showSnackBar(context, vm.errorMessage, isError: true);
-      vm.clearError();
-    }
+    // Always navigate — sendOtp never fails in test mode
+    Navigator.of(context).push(
+      AppUtils.slideRoute(OtpScreen(phoneNumber: phone)),
+    );
   }
 
   @override

@@ -1,19 +1,33 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../models/message_model.dart';
 
 class DatabaseService {
   final _db = FirebaseDatabase.instance.ref();
+  final _fs = FirebaseFirestore.instance;
 
-  // ─── Online Presence ─────────────────────────────────────
+  // ─── Online Presence ──────────────────────────────────────
+  // Writes to RTDB for low-latency presence detection
+  // AND mirrors into Firestore so chat list / user streams stay in sync
   void setOnline(String uid) {
+    // RTDB presence node
     _db.child('presence/$uid').update({
       'isOnline': true,
       'lastSeen': ServerValue.timestamp,
     });
+    // Mirror to Firestore
+    _fs.collection('users').doc(uid).update({
+      'isOnline': true,
+      'lastSeen': FieldValue.serverTimestamp(),
+    }).catchError((_) {}); // ignore if doc doesn't exist yet
+
+    // On disconnect: RTDB auto-sets offline
     _db.child('presence/$uid').onDisconnect().update({
       'isOnline': false,
       'lastSeen': ServerValue.timestamp,
     });
+    // On disconnect: also mirror offline to Firestore via Cloud Function
+    // (For client-side fallback, we rely on app lifecycle in HomeScreen)
   }
 
   void setOffline(String uid) {
@@ -21,8 +35,13 @@ class DatabaseService {
       'isOnline': false,
       'lastSeen': ServerValue.timestamp,
     });
+    _fs.collection('users').doc(uid).update({
+      'isOnline': false,
+      'lastSeen': FieldValue.serverTimestamp(),
+    }).catchError((_) {});
   }
 
+  // Live presence stream from RTDB (fastest)
   Stream<Map<String, dynamic>> presenceStream(String uid) {
     return _db.child('presence/$uid').onValue.map((e) {
       if (!e.snapshot.exists) return {'isOnline': false, 'lastSeen': 0};
@@ -30,7 +49,7 @@ class DatabaseService {
     });
   }
 
-  // ─── Typing Indicator ────────────────────────────────────
+  // ─── Typing Indicator ─────────────────────────────────────
   void setTyping(String chatId, String uid, bool isTyping) {
     _db.child('chats/$chatId/typing/$uid').set(isTyping);
   }
@@ -41,7 +60,7 @@ class DatabaseService {
     );
   }
 
-  // ─── Chats ───────────────────────────────────────────────
+  // ─── Chats ────────────────────────────────────────────────
   Future<void> createOrUpdateChat(
     String chatId,
     String uid1,
@@ -67,7 +86,10 @@ class DatabaseService {
       if (!event.snapshot.exists) return [];
       final map = event.snapshot.value as Map;
       return map.entries
-          .map((e) => {'id': e.key, ...Map<String, dynamic>.from(e.value as Map)})
+          .map((e) => {
+                'id': e.key,
+                ...Map<String, dynamic>.from(e.value as Map),
+              })
           .toList()
         ..sort((a, b) =>
             ((b['lastMessageTime'] as int?) ?? 0)
@@ -75,7 +97,7 @@ class DatabaseService {
     });
   }
 
-  // ─── Messages ────────────────────────────────────────────
+  // ─── Messages ─────────────────────────────────────────────
   Future<void> sendMessage(String chatId, MessageModel message) async {
     final ref = _db.child('messages/$chatId').push();
     await ref.set(message.toMap());
@@ -115,11 +137,13 @@ class DatabaseService {
         .get();
     if (!snap.exists) return;
     final map = snap.value as Map;
+    final updates = <String, dynamic>{};
     for (final entry in map.entries) {
       if (!(entry.value['isSeen'] as bool? ?? false)) {
-        await _db.child('messages/$chatId/${entry.key}').update({'isSeen': true});
+        updates['messages/$chatId/${entry.key}/isSeen'] = true;
       }
     }
+    if (updates.isNotEmpty) await _db.update(updates);
   }
 
   Future<void> addReaction(
@@ -128,10 +152,12 @@ class DatabaseService {
     String uid,
     String emoji,
   ) async {
-    await _db.child('messages/$chatId/$messageId/reactions/$uid').set(emoji);
+    await _db
+        .child('messages/$chatId/$messageId/reactions/$uid')
+        .set(emoji);
   }
 
-  // ─── Unread Count ─────────────────────────────────────────
+  // ─── Unread Count ──────────────────────────────────────────
   Stream<int> unreadCountStream(String chatId, String uid) {
     return _db
         .child('messages/$chatId')
@@ -141,7 +167,9 @@ class DatabaseService {
         .map((event) {
       if (!event.snapshot.exists) return 0;
       final map = event.snapshot.value as Map;
-      return map.values.where((v) => !(v['isSeen'] as bool? ?? false)).length;
+      return map.values
+          .where((v) => !(v['isSeen'] as bool? ?? false))
+          .length;
     });
   }
 }

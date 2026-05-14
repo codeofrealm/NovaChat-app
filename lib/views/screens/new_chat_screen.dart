@@ -22,7 +22,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final uid = context.read<AuthViewModel>().firebaseUser?.uid ?? '';
+      final uid = context.read<AuthViewModel>().uid;
       context.read<HomeViewModel>().loadAllUsers(uid);
     });
   }
@@ -61,8 +61,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
                 contentPadding: const EdgeInsets.symmetric(vertical: 10),
               ),
               onChanged: (q) {
-                final uid =
-                    context.read<AuthViewModel>().firebaseUser?.uid ?? '';
+                final uid = context.read<AuthViewModel>().uid;
                 context.read<HomeViewModel>().searchUsers(q, uid);
               },
             ),
@@ -70,7 +69,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
           Expanded(
             child: Consumer2<HomeViewModel, AuthViewModel>(
               builder: (_, homeVm, authVm, __) {
-                final currentUid = authVm.firebaseUser?.uid ?? '';
+                final currentUid = authVm.uid;
                 final users = _searchController.text.isNotEmpty
                     ? homeVm.searchResults
                     : homeVm.allUsers;

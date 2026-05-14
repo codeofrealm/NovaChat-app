@@ -51,11 +51,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _save() async {
     final authVm = context.read<AuthViewModel>();
     final profileVm = context.read<ProfileViewModel>();
-    final uid = authVm.firebaseUser?.uid;
-    if (uid == null) return;
+    final uid = authVm.uid;
+    if (uid.isEmpty) return;
 
     String? imageUrl;
-    if (_imageFile != null) {
+    // Skip Storage upload for mock users (no real Firebase Auth session)
+    if (_imageFile != null && authVm.firebaseUser != null) {
       imageUrl = await profileVm.uploadProfileImage(uid, _imageFile!);
     }
 

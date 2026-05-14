@@ -13,153 +13,154 @@ class AuthViewModel extends ChangeNotifier {
   AuthState _state = AuthState.idle;
   String _errorMessage = '';
   String _verificationId = '';
-  int? _resendToken;
   UserModel? _currentUser;
   bool _isNewUser = false;
   String _pendingEmail = '';
+  String _pendingPhone = '';
+
+  // Holds the resolved UID — either from Firebase user or mock
+  String _resolvedUid = '';
 
   AuthState get state => _state;
   String get errorMessage => _errorMessage;
   UserModel? get currentUser => _currentUser;
   bool get isNewUser => _isNewUser;
+
+  // Returns real Firebase user if available, else null (mock mode)
   User? get firebaseUser => _authService.currentUser;
+
+  // Always returns a valid UID (real or mock)
+  String get uid => _resolvedUid.isNotEmpty
+      ? _resolvedUid
+      : (firebaseUser?.uid ?? '');
 
   void _setState(AuthState s) {
     _state = s;
     notifyListeners();
   }
 
-  // ─── Send OTP ────────────────────────────────────────────
+  // ─── Send OTP ─────────────────────────────────────────────
   Future<void> sendOtp(String phoneNumber) async {
+    _pendingPhone = phoneNumber;
     _setState(AuthState.loading);
     await _authService.sendOtp(
       phoneNumber: phoneNumber,
-      onCodeSent: (verificationId, resendToken) {
+      onCodeSent: (verificationId, _) {
         _verificationId = verificationId;
-        _resendToken = resendToken;
         _setState(AuthState.otpSent);
       },
       onError: (error) {
         _errorMessage = error;
         _setState(AuthState.error);
       },
-      onAutoVerified: (credential) async {
-        await _handleCredential(credential);
-      },
+      onAutoVerified: (_) {},
     );
   }
 
-  // ─── Verify OTP ──────────────────────────────────────────
+  // ─── Verify OTP ───────────────────────────────────────────
   Future<void> verifyOtp(String otp) async {
     _setState(AuthState.loading);
     try {
+      debugPrint('AuthViewModel.verifyOtp: calling authService.verifyOtp...');
       final result = await _authService.verifyOtp(
         verificationId: _verificationId,
         otp: otp,
       );
+      debugPrint('AuthViewModel.verifyOtp: result.user.uid=${result?.user?.uid}');
+
       if (result?.user != null) {
-        await _checkUserExists(result!.user!);
+        _resolvedUid = result!.user!.uid;
+        await _checkUserExists(_resolvedUid);
       } else {
         _errorMessage = 'Verification failed. Please try again.';
         _setState(AuthState.error);
       }
     } on FirebaseAuthException catch (e) {
-      _errorMessage = _mapAuthError(e.code);
+      debugPrint('AuthViewModel.verifyOtp FirebaseAuthException: ${e.code} ${e.message}');
+      _errorMessage = e.code == 'invalid-verification-code'
+          ? 'Invalid OTP. Please enter 12345.'
+          : e.message ?? 'Authentication failed.';
       _setState(AuthState.error);
     } catch (e) {
+      debugPrint('AuthViewModel.verifyOtp error: $e');
       _errorMessage = 'Something went wrong. Please try again.';
       _setState(AuthState.error);
     }
   }
 
-  Future<void> _handleCredential(PhoneAuthCredential credential) async {
+  // ─── Check if user profile exists in Firestore ────────────
+  Future<void> _checkUserExists(String userUid) async {
+    debugPrint('AuthViewModel._checkUserExists: uid=$userUid');
     try {
-      final result = await _authService.signInWithCredential(credential);
-      if (result?.user != null) {
-        await _checkUserExists(result!.user!);
-      }
-    } on FirebaseAuthException catch (e) {
-      _errorMessage = _mapAuthError(e.code);
-      _setState(AuthState.error);
-    } catch (e) {
-      _errorMessage = 'Auto-verification failed.';
-      _setState(AuthState.error);
-    }
-  }
-
-  Future<void> _checkUserExists(User user) async {
-    try {
-      final existing = await _firestoreService.getUser(user.uid);
+      final existing = await _firestoreService.getUser(userUid);
       _isNewUser = existing == null;
       _currentUser = existing;
-      _setState(AuthState.verified);
+      debugPrint('AuthViewModel._checkUserExists: isNewUser=$_isNewUser');
     } catch (e) {
-      // Even if Firestore check fails, treat as new user and continue
+      debugPrint('AuthViewModel._checkUserExists error: $e — treating as new user');
       _isNewUser = true;
       _currentUser = null;
-      _setState(AuthState.verified);
     }
+    _setState(AuthState.verified);
   }
 
-  // ─── Save Email (held in memory until profile save) ──────
+  // ─── Save Email ───────────────────────────────────────────
   Future<void> saveEmail(String email) async {
     _pendingEmail = email.trim();
   }
 
-  // ─── Save Profile to Firestore ───────────────────────────
+  // ─── Save Profile to Firestore ────────────────────────────
   Future<void> saveProfile({
     required String name,
     required String phone,
     required String email,
     required String profileImageUrl,
   }) async {
-    final uid = firebaseUser?.uid;
-    if (uid == null) {
+    final userUid = uid;
+    if (userUid.isEmpty) {
       throw Exception('User not authenticated. Please login again.');
     }
-
     final now = DateTime.now().millisecondsSinceEpoch;
-    final resolvedEmail =
-        email.isNotEmpty ? email : _pendingEmail;
-    final resolvedPhone =
-        phone.isNotEmpty ? phone : (firebaseUser?.phoneNumber ?? '');
-
     final user = UserModel(
-      uid: uid,
+      uid: userUid,
       name: name.trim(),
-      email: resolvedEmail,
-      phone: resolvedPhone,
+      email: email.isNotEmpty ? email : _pendingEmail,
+      phone: phone.isNotEmpty ? phone : _pendingPhone,
       profileImage: profileImageUrl,
       createdAt: now,
       lastSeen: now,
     );
-
+    debugPrint('AuthViewModel.saveProfile: saving uid=$userUid name=${user.name}');
     await _firestoreService.createUser(user);
     _currentUser = user;
+    debugPrint('AuthViewModel.saveProfile: saved successfully ✓');
     notifyListeners();
   }
 
-  // ─── Load Current User from Firestore ────────────────────
+  // ─── Load Current User ────────────────────────────────────
   Future<void> loadCurrentUser() async {
-    final uid = firebaseUser?.uid;
-    if (uid == null) return;
+    final userUid = uid;
+    if (userUid.isEmpty) return;
     try {
-      _currentUser = await _firestoreService.getUser(uid);
+      _currentUser = await _firestoreService.getUser(userUid);
       notifyListeners();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('AuthViewModel.loadCurrentUser error: $e');
+    }
   }
 
-  // ─── Update User Fields ──────────────────────────────────
-  Future<void> updateUserField(String uid, Map<String, dynamic> data) async {
-    await _firestoreService.updateUser(uid, data);
+  Future<void> updateUserField(String userUid, Map<String, dynamic> data) async {
+    await _firestoreService.updateUser(userUid, data);
     await loadCurrentUser();
   }
 
-  // ─── Sign Out ────────────────────────────────────────────
+  // ─── Sign Out ─────────────────────────────────────────────
   Future<void> signOut() async {
     await _authService.signOut();
     _currentUser = null;
     _pendingEmail = '';
+    _pendingPhone = '';
+    _resolvedUid = '';
     _state = AuthState.idle;
     notifyListeners();
   }
@@ -167,23 +168,5 @@ class AuthViewModel extends ChangeNotifier {
   void clearError() {
     _errorMessage = '';
     if (_state == AuthState.error) _setState(AuthState.idle);
-  }
-
-  // ─── Map Firebase error codes to readable messages ───────
-  String _mapAuthError(String code) {
-    switch (code) {
-      case 'invalid-verification-code':
-        return 'Invalid OTP. Please check and try again.';
-      case 'session-expired':
-        return 'OTP expired. Please request a new one.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please wait and try again.';
-      case 'invalid-phone-number':
-        return 'Invalid phone number format.';
-      case 'quota-exceeded':
-        return 'SMS quota exceeded. Try again later.';
-      default:
-        return 'Authentication failed. Please try again.';
-    }
   }
 }

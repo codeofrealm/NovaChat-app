@@ -11,6 +11,7 @@ import '../../views/widgets/user_avatar.dart';
 import 'chat_screen.dart';
 import 'edit_profile_screen.dart';
 import 'new_chat_screen.dart';
+import 'splash_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,8 +34,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final authVm = context.read<AuthViewModel>();
     await authVm.loadCurrentUser();
     if (!mounted) return;
-    final uid = authVm.firebaseUser?.uid;
-    if (uid == null) return;
+    final uid = authVm.uid;
+    if (uid.isEmpty) return;
     final homeVm = context.read<HomeViewModel>();
     homeVm.setOnline(uid);
     homeVm.listenToChats(uid);
@@ -111,9 +112,14 @@ class _HomeScreenState extends State<HomeScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           onSelected: (v) async {
             if (v == 'logout') {
+              final uid = context.read<AuthViewModel>().uid;
+              if (uid.isNotEmpty) context.read<HomeViewModel>().setOffline(uid);
               await context.read<AuthViewModel>().signOut();
               if (mounted) {
-                Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
+                Navigator.of(context).pushAndRemoveUntil(
+                  AppUtils.fadeRoute(const SplashScreen()),
+                  (_) => false,
+                );
               }
             }
           },
@@ -164,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         onChanged: (q) {
           setState(() => _isSearching = q.isNotEmpty);
-          final uid = context.read<AuthViewModel>().firebaseUser?.uid ?? '';
+          final uid = context.read<AuthViewModel>().uid;
           context.read<HomeViewModel>().searchUsers(q, uid);
         },
       ),
@@ -174,7 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildChatList() {
     return Consumer2<HomeViewModel, AuthViewModel>(
       builder: (_, homeVm, authVm, __) {
-        final currentUid = authVm.firebaseUser?.uid ?? '';
+        final currentUid = authVm.uid;
 
         if (_isSearching) {
           return _buildSearchResults(homeVm, currentUid);

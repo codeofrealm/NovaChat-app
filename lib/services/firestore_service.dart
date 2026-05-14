@@ -28,11 +28,17 @@ class FirestoreService {
   }
 
   Future<List<UserModel>> getAllUsers(String currentUid) async {
-    final snap = await _users.where(FieldPath.documentId, isNotEqualTo: currentUid).get();
-    return snap.docs.map((d) => UserModel.fromMap(d.data() as Map, d.id)).toList();
+    if (currentUid.isEmpty) return [];
+    final snap = await _users
+        .where(FieldPath.documentId, isNotEqualTo: currentUid)
+        .get();
+    return snap.docs
+        .map((d) => UserModel.fromMap(d.data() as Map, d.id))
+        .toList();
   }
 
   Future<List<UserModel>> searchUsers(String query, String currentUid) async {
+    if (currentUid.isEmpty) return [];
     final all = await getAllUsers(currentUid);
     final q = query.toLowerCase();
     return all

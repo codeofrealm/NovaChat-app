@@ -22,6 +22,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final _formKey = GlobalKey<FormState>();
   File? _imageFile;
   bool _isLoading = false;
+  String? _errorMessage; // ← shows inline error below button
 
   @override
   void dispose() {
@@ -29,14 +30,24 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     super.dispose();
   }
 
+  // ─── Image Picker ─────────────────────────────────────────
   Future<void> _pickImage(ImageSource source) async {
     Navigator.pop(context);
-    final picked = await ImagePicker().pickImage(
-      source: source,
-      imageQuality: 80,
-      maxWidth: 512,
-    );
-    if (picked != null) setState(() => _imageFile = File(picked.path));
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 80,
+        maxWidth: 512,
+      );
+      if (picked != null) {
+        setState(() {
+          _imageFile = File(picked.path);
+          _errorMessage = null; // clear any previous error
+        });
+      }
+    } catch (_) {
+      // permission denied or cancelled — silently ignore
+    }
   }
 
   void _showImagePicker() {
@@ -62,7 +73,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
               ),
             ),
             const Text('Choose Photo', style: AppTextStyles.headlineMedium),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
@@ -78,7 +89,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 28),
           ],
         ),
       ),
@@ -91,13 +102,13 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       child: Column(
         children: [
           Container(
-            width: 64,
-            height: 64,
+            width: 68,
+            height: 68,
             decoration: BoxDecoration(
               color: AppColors.primarySoft,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
             ),
-            child: Icon(icon, color: AppColors.primary, size: 28),
+            child: Icon(icon, color: AppColors.primary, size: 30),
           ),
           const SizedBox(height: 8),
           Text(label, style: AppTextStyles.bodyMedium),
@@ -106,21 +117,37 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
+  // ─── Save Profile ─────────────────────────────────────────
   Future<void> _saveProfile() async {
+    // 1. Validate form
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
+
+    // 2. Must be authenticated
+    final authVm = context.read<AuthViewModel>();
+    if (authVm.uid.isEmpty) {
+      setState(() => _errorMessage = 'Session expired. Please go back and login again.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
-      final authVm = context.read<AuthViewModel>();
       final profileVm = context.read<ProfileViewModel>();
-      final uid = authVm.firebaseUser?.uid ?? 'mock_uid';
+      final userUid = authVm.uid;
       final phone = authVm.firebaseUser?.phoneNumber ?? '';
 
+      // 3. Upload image if selected
       String imageUrl = '';
-      // Only upload image if a real Firebase user is signed in
+      // Skip Storage upload for mock users (no Firebase Auth session)
+      // Firebase Storage requires a signed-in Firebase user
       if (_imageFile != null && authVm.firebaseUser != null) {
-        imageUrl = await profileVm.uploadProfileImage(uid, _imageFile!);
+        imageUrl = await profileVm.uploadProfileImage(userUid, _imageFile!);
       }
 
+      // 4. Save profile to Firestore
       await authVm.saveProfile(
         name: _nameController.text.trim(),
         phone: phone,
@@ -128,25 +155,57 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         profileImageUrl: imageUrl,
       );
 
+      // 5. Navigate to success
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         AppUtils.fadeRoute(const SuccessScreen()),
         (_) => false,
       );
     } catch (e) {
+      // 6. Show the REAL error inline — only clears on next successful save
       if (mounted) {
-        AppUtils.showSnackBar(context, 'Failed to save profile', isError: true);
+        setState(() => _errorMessage = _parseError(e));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  /// Converts raw exceptions into user-friendly messages
+  String _parseError(Object e) {
+    final msg = e.toString().toLowerCase();
+    if (msg.contains('permission-denied') || msg.contains('permission denied')) {
+      return 'Permission denied. Check Firebase Storage & Firestore rules.';
+    }
+    if (msg.contains('network') || msg.contains('unavailable')) {
+      return 'No internet connection. Please check your network and try again.';
+    }
+    if (msg.contains('unauthenticated') || msg.contains('not authenticated')) {
+      return 'Session expired. Please go back and login again.';
+    }
+    if (msg.contains('storage')) {
+      return 'Image upload failed. You can skip the photo and add it later.';
+    }
+    if (msg.contains('firestore') || msg.contains('cloud_firestore')) {
+      return 'Failed to save profile. Please try again.';
+    }
+    // Show the raw message if it's short enough to be readable
+    final raw = e.toString().replaceAll('Exception: ', '');
+    return raw.length < 120 ? raw : 'Failed to save profile. Please try again.';
+  }
+
+  // ─── Build ────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.white, elevation: 0),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: _isLoading
+            ? const SizedBox.shrink() // disable back during save
+            : const BackButton(),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -161,11 +220,18 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 _buildAvatarPicker(),
                 const SizedBox(height: 32),
                 _buildNameField(),
-                const SizedBox(height: 40),
+                const SizedBox(height: 32),
+
+                // ── Inline error card (only visible when error exists) ──
+                if (_errorMessage != null) ...[
+                  _buildErrorCard(),
+                  const SizedBox(height: 16),
+                ],
+
                 PrimaryButton(
                   label: 'Create Profile',
                   isLoading: _isLoading,
-                  onPressed: _saveProfile,
+                  onPressed: _isLoading ? null : _saveProfile,
                 ),
                 const SizedBox(height: 24),
               ],
@@ -176,6 +242,51 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
+  // ─── Error Card ───────────────────────────────────────────
+  Widget _buildErrorCard() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.error.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.error_outline_rounded,
+            color: AppColors.error,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _errorMessage!,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.error,
+                height: 1.4,
+              ),
+            ),
+          ),
+          // Dismiss button
+          GestureDetector(
+            onTap: () => setState(() => _errorMessage = null),
+            child: const Icon(
+              Icons.close_rounded,
+              color: AppColors.error,
+              size: 18,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Header ───────────────────────────────────────────────
   Widget _buildHeader() {
     return const Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -190,19 +301,26 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
+  // ─── Avatar Picker ────────────────────────────────────────
   Widget _buildAvatarPicker() {
     return Center(
       child: GestureDetector(
-        onTap: _showImagePicker,
+        onTap: _isLoading ? null : _showImagePicker,
         child: Stack(
           children: [
-            Container(
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
               width: 110,
               height: 110,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: AppColors.primarySoft,
-                border: Border.all(color: AppColors.primary, width: 2),
+                border: Border.all(
+                  color: _imageFile != null
+                      ? AppColors.success
+                      : AppColors.primary,
+                  width: 2.5,
+                ),
                 image: _imageFile != null
                     ? DecorationImage(
                         image: FileImage(_imageFile!),
@@ -225,13 +343,21 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.primary, AppColors.primaryLight],
+                  gradient: LinearGradient(
+                    colors: _imageFile != null
+                        ? [AppColors.success, const Color(0xFF34D399)]
+                        : [AppColors.primary, AppColors.primaryLight],
                   ),
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
                 ),
-                child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
+                child: Icon(
+                  _imageFile != null
+                      ? Icons.check_rounded
+                      : Icons.camera_alt_rounded,
+                  color: Colors.white,
+                  size: 16,
+                ),
               ),
             ),
           ],
@@ -240,17 +366,28 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
+  // ─── Name Field ───────────────────────────────────────────
   Widget _buildNameField() {
     return TextFormField(
       controller: _nameController,
       textCapitalization: TextCapitalization.words,
       style: AppTextStyles.bodyLarge,
+      enabled: !_isLoading,
+      onChanged: (_) {
+        // Clear error when user starts typing again
+        if (_errorMessage != null) setState(() => _errorMessage = null);
+      },
       decoration: const InputDecoration(
         hintText: 'Your full name',
-        prefixIcon: Icon(Icons.person_outline_rounded, color: AppColors.textHint),
+        prefixIcon: Icon(
+          Icons.person_outline_rounded,
+          color: AppColors.textHint,
+        ),
       ),
       validator: (v) {
-        if (v == null || v.trim().length < 2) return 'Enter your name';
+        if (v == null || v.trim().length < 2) {
+          return 'Please enter at least 2 characters';
+        }
         return null;
       },
     );

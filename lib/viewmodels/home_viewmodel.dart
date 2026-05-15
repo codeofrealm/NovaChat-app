@@ -71,7 +71,7 @@ class HomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  Stream<UserModel?> userStream(String uid) => _fs.userStream(uid);
+  Stream<UserModel?> userStream(String uid) => _db.userStream(uid);
   Stream<int> unreadCountStream(String chatId, String uid) =>
       _db.unreadCountStream(chatId, uid);
 

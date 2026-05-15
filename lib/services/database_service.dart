@@ -11,6 +11,28 @@ class DatabaseService {
   final _fs = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
 
+  // ─── Users ────────────────────────────────────────────────
+  Future<List<UserModel>> getAllUsers(String currentUid) async {
+    try {
+      final snap = await _db.child('users').get();
+      if (!snap.exists) return [];
+      final map = snap.value as Map;
+      return map.entries
+          .where((e) => e.key != currentUid)
+          .map((e) => UserModel.fromMap(e.value as Map, e.key as String))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Stream<UserModel?> userStream(String uid) {
+    return _db.child('users/$uid').onValue.map((e) {
+      if (!e.snapshot.exists) return null;
+      return UserModel.fromMap(e.snapshot.value as Map, uid);
+    });
+  }
+
   // ─── Online Presence ──────────────────────────────────────
   void setOnline(String uid, String name) {
     final updates = {

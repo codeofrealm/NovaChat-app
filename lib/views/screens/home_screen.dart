@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -164,12 +165,14 @@ class _HomeScreenState extends State<HomeScreen>
               ),
               child: ClipOval(
                 child: vm.currentUser?.profileImage.isNotEmpty == true
-                    ? CachedNetworkImage(
-                        imageUrl: vm.currentUser!.profileImage,
-                        fit: BoxFit.cover,
-                        placeholder: (_, __) => const Icon(Icons.person,
-                            color: AppColors.primary, size: 18),
-                      )
+                    ? (vm.currentUser!.profileImage.startsWith('/')
+                        ? Image.file(File(vm.currentUser!.profileImage), fit: BoxFit.cover)
+                        : CachedNetworkImage(
+                            imageUrl: vm.currentUser!.profileImage,
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) => const Icon(Icons.person,
+                                color: AppColors.primary, size: 18),
+                          ))
                     : const Icon(Icons.person,
                         color: AppColors.primary, size: 18),
               ),
@@ -338,10 +341,12 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   child: ClipOval(
                     child: user?.profileImage.isNotEmpty == true
-                        ? CachedNetworkImage(
-                            imageUrl: user!.profileImage,
-                            fit: BoxFit.cover,
-                          )
+                        ? (user!.profileImage.startsWith('/')
+                            ? Image.file(File(user.profileImage), fit: BoxFit.cover)
+                            : CachedNetworkImage(
+                                imageUrl: user.profileImage,
+                                fit: BoxFit.cover,
+                              ))
                         : Container(
                             color: AppColors.primarySoft,
                             child: const Icon(Icons.person,

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
@@ -23,6 +24,8 @@ class UserAvatar extends StatelessWidget {
     this.showBorder = true,
   });
 
+  bool get _isLocalPath => imageUrl.startsWith('/') || imageUrl.startsWith('file://');
+
   @override
   Widget build(BuildContext context) {
     final child = GestureDetector(
@@ -32,22 +35,30 @@ class UserAvatar extends StatelessWidget {
         backgroundColor: AppColors.primarySoft,
         child: imageUrl.isNotEmpty
             ? ClipOval(
-                child: CachedNetworkImage(
-                  imageUrl: imageUrl,
-                  width: radius * 2,
-                  height: radius * 2,
-                  fit: BoxFit.cover,
-                  placeholder: (_, __) => Shimmer.fromColors(
-                    baseColor: AppColors.shimmerBase,
-                    highlightColor: AppColors.shimmerHighlight,
-                    child: Container(
-                      width: radius * 2,
-                      height: radius * 2,
-                      color: AppColors.shimmerBase,
-                    ),
-                  ),
-                  errorWidget: (_, __, ___) => _buildInitials(),
-                ),
+                child: _isLocalPath
+                    ? Image.file(
+                        File(imageUrl),
+                        width: radius * 2,
+                        height: radius * 2,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _buildInitials(),
+                      )
+                    : CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        width: radius * 2,
+                        height: radius * 2,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => Shimmer.fromColors(
+                          baseColor: AppColors.shimmerBase,
+                          highlightColor: AppColors.shimmerHighlight,
+                          child: Container(
+                            width: radius * 2,
+                            height: radius * 2,
+                            color: AppColors.shimmerBase,
+                          ),
+                        ),
+                        errorWidget: (_, __, ___) => _buildInitials(),
+                      ),
               )
             : _buildInitials(),
       ),

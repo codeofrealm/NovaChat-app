@@ -1,17 +1,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_database/firebase_database.dart';
 import '../models/user_model.dart';
 
 class FirestoreService {
   final _fs = FirebaseFirestore.instance;
+  final _db = FirebaseDatabase.instance.ref();
 
   CollectionReference get _users => _fs.collection('users');
 
   Future<void> createUser(UserModel user) async {
     await _users.doc(user.uid).set(user.toMap());
+    // Mirror basic profile to Realtime DB for chat tile lookups
+    await _db.child('users/${user.uid}').set(user.toMap());
   }
 
   Future<void> updateUser(String uid, Map<String, dynamic> data) async {
     await _users.doc(uid).set(data, SetOptions(merge: true));
+    // Mirror to Realtime DB
+    await _db.child('users/$uid').update(data);
   }
 
   Future<UserModel?> getUser(String uid) async {

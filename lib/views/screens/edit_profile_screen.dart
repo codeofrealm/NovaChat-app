@@ -71,6 +71,8 @@ class _EditProfileScreenState extends State<EditProfileScreen>
     String? imageUrl;
     if (_imageFile != null && authVm.firebaseUser != null) {
       imageUrl = await profileVm.uploadProfileImage(uid, _imageFile!);
+    } else if (_imageFile != null) {
+      imageUrl = _imageFile!.path;
     }
 
     await profileVm.updateProfile(

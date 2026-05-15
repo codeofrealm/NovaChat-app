@@ -162,6 +162,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
       String imageUrl = '';
       if (_imageFile != null && authVm.firebaseUser != null) {
         imageUrl = await profileVm.uploadProfileImage(userUid, _imageFile!);
+      } else if (_imageFile != null) {
+        imageUrl = _imageFile!.path;
       }
 
       await authVm.saveProfile(

@@ -11,7 +11,9 @@ import 'home_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String phoneNumber;
-  const OtpScreen({super.key, required this.phoneNumber});
+  final bool isRegister;
+  const OtpScreen(
+      {super.key, required this.phoneNumber, required this.isRegister});
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -87,7 +89,9 @@ class _OtpScreenState extends State<OtpScreen>
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         AppUtils.fadeRoute(
-          vm.isNewUser ? const EmailEntryScreen() : const HomeScreen(),
+          vm.isNewUser
+              ? const EmailEntryScreen()
+              : const HomeScreen(),
         ),
         (_) => false,
       );

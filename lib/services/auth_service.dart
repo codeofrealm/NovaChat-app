@@ -5,7 +5,6 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   static const _testOtp = '12345';
-  static const _mockUid = 'novachat_test_user';
 
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -17,6 +16,11 @@ class AuthService {
     required Function(String error) onError,
     required Function(PhoneAuthCredential credential) onAutoVerified,
   }) async {
+    if (kDebugMode) {
+      onCodeSent('novachat-debug-verification', null);
+      return;
+    }
+
     try {
       await _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
@@ -42,7 +46,12 @@ class AuthService {
   Future<_MockUserCredential?> verifyOtp({
     required String verificationId,
     required String otp,
+    required String phoneNumber,
   }) async {
+    if (kDebugMode && otp.trim() == _testOtp) {
+      return _testCredentialForPhone(phoneNumber);
+    }
+
     try {
       final credential = PhoneAuthProvider.credential(
         verificationId: verificationId,
@@ -53,15 +62,33 @@ class AuthService {
     } on FirebaseAuthException catch (e) {
       // Fallback for test mode
       if (otp.trim() == _testOtp) {
-        try {
-          final result = await _auth.signInAnonymously();
-          return _MockUserCredential(result.user);
-        } catch (_) {
-          return _MockUserCredential(null, mockUid: _mockUid);
-        }
+        return _testCredentialForPhone(phoneNumber);
       }
       throw e;
+    } catch (e) {
+      if (otp.trim() == _testOtp) {
+        return _testCredentialForPhone(phoneNumber);
+      }
+      rethrow;
     }
+  }
+
+  Future<_MockUserCredential> _testCredentialForPhone(String phoneNumber) async {
+    final mockUid = _mockUidForPhone(phoneNumber);
+    try {
+      final result = await _auth.signInAnonymously();
+      return _MockUserCredential(result.user, mockUid: mockUid);
+    } catch (_) {
+      return _MockUserCredential(null, mockUid: mockUid);
+    }
+  }
+
+  String _mockUidForPhone(String phoneNumber) {
+    final digits = phoneNumber.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) {
+      return 'novachat_test_user';
+    }
+    return 'novachat_test_$digits';
   }
 
   // Real phone auth sign-in
@@ -85,10 +112,10 @@ class _MockUserCredential {
   _MockUserCredential(this._firebaseUser, {String? mockUid})
       : _mockUid = mockUid;
 
-  _MockUser? get user => _firebaseUser != null
-      ? _MockUser(_firebaseUser.uid)
-      : _mockUid != null
-          ? _MockUser(_mockUid)
+  _MockUser? get user => _mockUid != null
+      ? _MockUser(_mockUid)
+      : _firebaseUser != null
+          ? _MockUser(_firebaseUser.uid)
           : null;
 }
 

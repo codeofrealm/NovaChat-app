@@ -9,7 +9,8 @@ import '../../views/widgets/primary_button.dart';
 import 'otp_screen.dart';
 
 class PhoneLoginScreen extends StatefulWidget {
-  const PhoneLoginScreen({super.key});
+  final bool isRegister;
+  const PhoneLoginScreen({super.key, required this.isRegister});
 
   @override
   State<PhoneLoginScreen> createState() => _PhoneLoginScreenState();
@@ -34,7 +35,8 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     if (!mounted) return;
     // Always navigate — sendOtp never fails in test mode
     Navigator.of(context).push(
-      AppUtils.slideRoute(OtpScreen(phoneNumber: phone)),
+      AppUtils.slideRoute(OtpScreen(
+          phoneNumber: phone, isRegister: widget.isRegister)),
     );
   }
 
@@ -94,9 +96,11 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
         const SizedBox(height: 20),
         const Text('Enter your\nphone number', style: AppTextStyles.displayMedium),
         const SizedBox(height: 8),
-        const Text(
-          'We\'ll verify your identity securely',
-          style: TextStyle(fontSize: 15, color: AppColors.textSecondary),
+        Text(
+          widget.isRegister
+              ? 'Create your NovaChat account'
+              : 'Login to your existing account',
+          style: const TextStyle(fontSize: 15, color: AppColors.textSecondary),
         ),
       ],
     );

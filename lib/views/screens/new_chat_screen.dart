@@ -21,7 +21,6 @@ class _NewChatScreenState extends State<NewChatScreen> {
   final _contactsService = ContactsService();
 
   List<UserModel> _onApp = [];
-  List<UserModel> _others = [];
   List<UserModel> _filtered = [];
   bool _isLoading = true;
   bool _isSearching = false;
@@ -46,7 +45,6 @@ class _NewChatScreenState extends State<NewChatScreen> {
     if (!mounted) return;
     setState(() {
       _onApp = result.onApp;
-      _others = result.others;
       _isLoading = false;
     });
   }
@@ -58,8 +56,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
       if (q.isEmpty) {
         _filtered = [];
       } else {
-        final all = [..._onApp, ..._others];
-        _filtered = all
+        _filtered = _onApp
             .where((u) =>
                 u.name.toLowerCase().contains(q.toLowerCase()) ||
                 u.phone.contains(q))
@@ -143,8 +140,11 @@ class _NewChatScreenState extends State<NewChatScreen> {
   }
 
   Widget _buildSectioned() {
-    if (_onApp.isEmpty && _others.isEmpty) {
-      return _buildEmpty('No contacts found', 'Invite friends to join NovaChat');
+    if (_onApp.isEmpty) {
+      return _buildEmpty(
+        'No contacts found',
+        'Only phone contacts using NovaChat will appear here',
+      );
     }
 
     return ListView(
@@ -153,10 +153,6 @@ class _NewChatScreenState extends State<NewChatScreen> {
         if (_onApp.isNotEmpty) ...[
           _sectionHeader('Contacts on NovaChat', _onApp.length),
           ..._onApp.map((u) => _contactTile(u)),
-        ],
-        if (_others.isNotEmpty) ...[
-          _sectionHeader('Other Users', _others.length),
-          ..._others.map((u) => _contactTile(u)),
         ],
       ],
     );

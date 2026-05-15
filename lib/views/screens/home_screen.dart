@@ -461,59 +461,60 @@ class _ChatTile extends StatelessWidget {
     final lastMsg = chatData?['lastMessage'] as String? ?? u.about;
     final lastTime = chatData?['lastMessageTime'] as int? ?? 0;
 
-    return InkWell(
-      onTap: () => onTap(u),
-      child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          children: [
-            Stack(
+    return StreamBuilder<int>(
+      stream: unreadStream ?? const Stream<int>.empty(),
+      builder: (_, snap) {
+        final unread = snap.data ?? 0;
+        return InkWell(
+          onTap: () => onTap(u),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
               children: [
-                UserAvatar(
-                  imageUrl: u.profileImage,
-                  name: u.name,
-                  radius: 26,
-                ),
-                if (u.isOnline)
-                  Positioned(
-                    right: 1,
-                    bottom: 1,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: AppColors.online,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
+                Stack(
+                  children: [
+                    UserAvatar(
+                      imageUrl: u.profileImage,
+                      name: u.name,
+                      radius: 26,
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+                    if (u.isOnline)
+                      Positioned(
+                        right: 1,
+                        bottom: 1,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: AppColors.online,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Text(u.name,
-                            style: const TextStyle(
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              u.name,
+                              style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                      ),
-                      if (lastTime > 0)
-                        StreamBuilder<int>(
-                          stream: unreadStream ??
-                              const Stream<int>.empty(),
-                          builder: (_, snap) {
-                            final unread = snap.data ?? 0;
-                            return Text(
+                                color: AppColors.textPrimary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (lastTime > 0)
+                            Text(
                               AppUtils.formatChatTime(lastTime),
                               style: TextStyle(
                                 fontSize: 11,
@@ -524,54 +525,49 @@ class _ChatTile extends StatelessWidget {
                                     ? FontWeight.w600
                                     : FontWeight.w400,
                               ),
-                            );
-                          },
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          lastMsg,
-                          style: const TextStyle(
-                              fontSize: 13,
-                              color: AppColors.textSecondary),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      StreamBuilder<int>(
-                        stream:
-                            unreadStream ?? const Stream<int>.empty(),
-                        builder: (_, snap) {
-                          final count = snap.data ?? 0;
-                          if (count == 0) return const SizedBox.shrink();
-                          return Container(
-                            padding: const EdgeInsets.all(5),
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
-                              shape: BoxShape.circle,
                             ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Expanded(
                             child: Text(
-                              count > 99 ? '99+' : '$count',
+                              lastMsg,
                               style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (unread > 0)
+                            Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: const BoxDecoration(
+                                color: AppColors.primary,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                unread > 99 ? '99+' : '$unread',
+                                style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 10,
-                                  fontWeight: FontWeight.w700),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ),
-                          );
-                        },
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

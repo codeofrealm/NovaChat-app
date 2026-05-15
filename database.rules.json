@@ -1,16 +1,25 @@
 {
   "rules": {
     "presence": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": ["isOnline", "lastSeen"],
       "$uid": {
-        ".read": "auth != null",
-        ".write": "auth != null && auth.uid === $uid"
-      },
-      ".indexOn": ["isOnline", "lastSeen"]
+        "isOnline": {
+          ".validate": "newData.isBoolean()"
+        },
+        "lastSeen": {
+          ".validate": "newData.isNumber()"
+        },
+        "name": {
+          ".validate": "newData.isString()"
+        }
+      }
     },
     "users": {
+      ".read": "auth != null",
+      ".write": "auth != null",
       "$uid": {
-        ".read": "auth != null",
-        ".write": "auth != null && auth.uid === $uid",
         "isOnline": {
           ".validate": "newData.isBoolean()"
         },
@@ -23,34 +32,34 @@
       }
     },
     "chats": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": ["lastMessageTime"],
       "$chatId": {
-        ".read": "auth != null && data.child('participants').child(auth.uid).exists()",
-        ".write": "auth != null",
-        ".validate": "newData.child('participants').hasChildren(['$uid'])",
-        "participants": {
-          ".validate": "newData.hasChildren([auth.uid])"
-        },
         "lastMessageTime": {
           ".validate": "newData.isNumber()"
         }
       }
     },
     "messages": {
+      ".read": "auth != null",
+      ".write": "auth != null",
       "$chatId": {
-        ".read": "auth != null && root.child('chats').child($chatId).child('participants').child(auth.uid).exists()",
-        ".write": "auth != null && !data.exists()",
-        ".validate": "newData.hasChildren(['senderId', 'receiverId', 'timestamp', 'type'])",
-        "senderId": {
-          ".validate": "newData.isString() && newData.val() === auth.uid"
-        },
-        "receiverId": {
-          ".validate": "newData.isString()"
-        },
-        "timestamp": {
-          ".validate": "newData.isNumber()"
-        },
-        "text": {
-          ".validate": "newData.isString()"
+        ".indexOn": ["receiverId", "timestamp"],
+        "$messageId": {
+          ".validate": "newData.hasChildren(['senderId', 'receiverId', 'timestamp', 'type'])",
+          "senderId": {
+            ".validate": "newData.isString()"
+          },
+          "receiverId": {
+            ".validate": "newData.isString()"
+          },
+          "timestamp": {
+            ".validate": "newData.isNumber()"
+          },
+          "text": {
+            ".validate": "newData.isString()"
+          }
         }
       }
     }

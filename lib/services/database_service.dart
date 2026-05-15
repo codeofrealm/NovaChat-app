@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../models/message_model.dart';
@@ -8,7 +7,6 @@ import '../models/user_model.dart';
 
 class DatabaseService {
   final _db = FirebaseDatabase.instance.ref();
-  final _fs = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
 
   // ─── Users ────────────────────────────────────────────────
@@ -35,18 +33,13 @@ class DatabaseService {
 
   // ─── Online Presence ──────────────────────────────────────
   void setOnline(String uid, String name) {
-    final updates = {
-      'presence/$uid': {
-        'isOnline': true,
-        'lastSeen': ServerValue.timestamp,
-        'name': name,
-      },
+    _db.update({
+      'presence/$uid/isOnline': true,
+      'presence/$uid/lastSeen': ServerValue.timestamp,
+      'presence/$uid/name': name,
       'users/$uid/isOnline': true,
       'users/$uid/lastSeen': ServerValue.timestamp,
-    };
-    _db.update(updates);
-
-    // On-disconnect handlers
+    });
     _db.child('presence/$uid').onDisconnect().update({
       'isOnline': false,
       'lastSeen': ServerValue.timestamp,
@@ -55,29 +48,15 @@ class DatabaseService {
       'isOnline': false,
       'lastSeen': ServerValue.timestamp,
     });
-
-    // Mirror to Firestore
-    _fs.collection('users').doc(uid).update({
-      'isOnline': true,
-      'lastSeen': FieldValue.serverTimestamp(),
-    }).catchError((_) {});
   }
 
   void setOffline(String uid) {
-    final updates = {
-      'presence/$uid': {
-        'isOnline': false,
-        'lastSeen': ServerValue.timestamp,
-      },
+    _db.update({
+      'presence/$uid/isOnline': false,
+      'presence/$uid/lastSeen': ServerValue.timestamp,
       'users/$uid/isOnline': false,
       'users/$uid/lastSeen': ServerValue.timestamp,
-    };
-    _db.update(updates);
-
-    _fs.collection('users').doc(uid).update({
-      'isOnline': false,
-      'lastSeen': FieldValue.serverTimestamp(),
-    }).catchError((_) {});
+    });
   }
 
   Stream<Map<String, dynamic>> presenceStream(String uid) {
@@ -112,14 +91,13 @@ class DatabaseService {
     required String lastMessageType,
     required int time,
   }) async {
-    final chatData = {
+    await _db.child('chats/$chatId').update({
       'participants/$uid1': true,
       'participants/$uid2': true,
       'lastMessage': lastMessage,
       'lastMessageType': lastMessageType,
       'lastMessageTime': time,
-    };
-    await _db.child('chats/$chatId').set(chatData);
+    });
   }
 
   Stream<List<Map<String, dynamic>>> chatsStream(String uid) {

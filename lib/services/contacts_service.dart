@@ -1,14 +1,14 @@
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/user_model.dart';
-import 'database_service.dart';
+import 'firestore_service.dart';
 
 class ContactsService {
-  final DatabaseService _db = DatabaseService();
+  final FirestoreService _db = FirestoreService();
 
   Future<({List<UserModel> onApp, List<UserModel> others})> getContacts(
       String currentUid) async {
-    // Load all app users from Realtime Database
+    // Load all app users from Firestore profiles
     List<UserModel> allAppUsers = [];
     try {
       allAppUsers = await _db.getAllUsers(currentUid);
@@ -23,14 +23,14 @@ class ContactsService {
     final status = await Permission.contacts.request();
     if (!status.isGranted) {
       // No permission — show all app users under "Other Users"
-      return (onApp: <UserModel>[], others: allAppUsers);
+      return (onApp: <UserModel>[], others: <UserModel>[]);
     }
 
     List<Contact> deviceContacts = [];
     try {
       deviceContacts = await FlutterContacts.getContacts(withProperties: true);
     } catch (_) {
-      return (onApp: <UserModel>[], others: allAppUsers);
+      return (onApp: <UserModel>[], others: <UserModel>[]);
     }
 
     // Normalize phone numbers
@@ -46,8 +46,6 @@ class ContactsService {
     }
 
     final onApp = <UserModel>[];
-    final others = <UserModel>[];
-
     for (final user in allAppUsers) {
       final userPhone = user.phone.replaceAll(RegExp(r'[\s\-\(\)\+]'), '');
       final last10 = userPhone.length > 10
@@ -56,11 +54,9 @@ class ContactsService {
 
       if (deviceNumbers.contains(userPhone) || deviceNumbers.contains(last10)) {
         onApp.add(user);
-      } else {
-        others.add(user);
       }
     }
 
-    return (onApp: onApp, others: others);
+    return (onApp: onApp, others: <UserModel>[]);
   }
 }

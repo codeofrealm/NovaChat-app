@@ -107,6 +107,7 @@ class AuthViewModel extends ChangeNotifier {
       final result = await _authService.verifyOtp(
         verificationId: _verificationId,
         otp: otp,
+        phoneNumber: _pendingPhone,
       );
 
       if (result?.user != null) {
@@ -130,14 +131,23 @@ class AuthViewModel extends ChangeNotifier {
   // ─── Check if user profile exists in Firestore ─────────────
   Future<void> _checkUserExists(String userUid) async {
     try {
-      final existing = await _firestoreService.getUser(userUid);
-      _isNewUser = existing == null;
-      _currentUser = existing ?? _currentUser;
+      // First try by UID
+      UserModel? existing = await _firestoreService.getUser(userUid);
 
-      if (!_isNewUser && existing != null) {
-        // Existing user --- restore old chats and go to home
-        _dbService.setOnline(userUid, existing.name);
-        await _secureStorage.saveAuthState(userUid, false);
+      // Fallback: search by phone number (handles re-installs / UID changes)
+      if (existing == null && _pendingPhone.isNotEmpty) {
+        existing = await _firestoreService.getUserByPhone(_pendingPhone);
+        if (existing != null) {
+          _resolvedUid = existing.uid;
+        }
+      }
+
+      _isNewUser = existing == null;
+      _currentUser = existing;
+
+      if (existing != null) {
+        _dbService.setOnline(_resolvedUid, existing.name);
+        await _secureStorage.saveAuthState(_resolvedUid, false);
         await _secureStorage.cacheUserProfile(existing.toMap());
       }
       _setState(AuthState.verified);
@@ -150,7 +160,12 @@ class AuthViewModel extends ChangeNotifier {
 
   // ─── Save Email (for new users) ────────────────────────────
   Future<void> saveEmail(String email) async {
-    _pendingEmail = email.trim();
+    final normalizedEmail = email.trim().toLowerCase();
+    final existing = await _firestoreService.getUserByEmail(normalizedEmail);
+    if (existing != null && existing.uid != uid) {
+      throw Exception('Email already registered. Please use another email.');
+    }
+    _pendingEmail = normalizedEmail;
   }
 
   // ─── Save Profile to Firestore (for new users) ─────────────
@@ -162,13 +177,28 @@ class AuthViewModel extends ChangeNotifier {
   }) async {
     final userUid = uid;
     if (userUid.isEmpty) throw Exception('User not authenticated.');
+    final resolvedEmail =
+        (email.isNotEmpty ? email : _pendingEmail).trim().toLowerCase();
+    final resolvedPhone = (phone.isNotEmpty ? phone : _pendingPhone).trim();
+
+    final existingByPhone =
+        await _firestoreService.getUserByPhone(resolvedPhone);
+    if (existingByPhone != null && existingByPhone.uid != userUid) {
+      throw Exception('Phone number already registered. Please login.');
+    }
+
+    final existingByEmail =
+        await _firestoreService.getUserByEmail(resolvedEmail);
+    if (existingByEmail != null && existingByEmail.uid != userUid) {
+      throw Exception('Email already registered. Please use another email.');
+    }
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final user = UserModel(
       uid: userUid,
       name: name.trim(),
-      email: email.isNotEmpty ? email : _pendingEmail,
-      phone: phone.isNotEmpty ? phone : _pendingPhone,
+      email: resolvedEmail,
+      phone: resolvedPhone,
       profileImage: profileImageUrl,
       createdAt: now,
       lastSeen: now,

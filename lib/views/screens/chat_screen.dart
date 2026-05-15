@@ -31,7 +31,7 @@ class _ChatScreenState extends State<ChatScreen>
   final _scrollController = ScrollController();
   final _dbService = DatabaseService();
   late ChatViewModel _chatVm;
-  late String _currentUid;
+  String _currentUid = '';
   bool _showAppBar = true;
   double _lastScrollOffset = 0;
 
@@ -47,14 +47,18 @@ class _ChatScreenState extends State<ChatScreen>
       return;
     }
     _currentUid = uid;
-    _chatVm.listenToMessages(widget.chatId, _currentUid);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _chatVm.listenToMessages(widget.chatId, _currentUid);
+    });
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
-    _dbService.setTyping(widget.chatId, _currentUid, false);
+    if (_currentUid.isNotEmpty) {
+      _dbService.setTyping(widget.chatId, _currentUid, false);
+    }
     _scrollController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -63,7 +67,7 @@ class _ChatScreenState extends State<ChatScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed && _currentUid.isNotEmpty) {
       _chatVm.markSeen(widget.chatId, _currentUid);
     }
   }
@@ -112,7 +116,7 @@ class _ChatScreenState extends State<ChatScreen>
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeInOut,
       color: Colors.white,
-      height: _showAppBar ? 60 : 0,
+      height: _showAppBar ? MediaQuery.of(context).padding.top + 60 : 0,
       width: double.infinity,
       child: _showAppBar
           ? SafeArea(
@@ -344,7 +348,6 @@ class _ChatScreenState extends State<ChatScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(height: 80),
           Container(
             width: 90,
             height: 90,

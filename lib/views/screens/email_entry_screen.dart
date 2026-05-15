@@ -47,7 +47,15 @@ class _EmailEntryScreenState extends State<EmailEntryScreen>
     if (!_formKey.currentState!.validate()) return;
     final email = _emailController.text.trim();
     final vm = context.read<AuthViewModel>();
-    await vm.saveEmail(email);
+    try {
+      await vm.saveEmail(email);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _inlineError = e.toString().replaceAll('Exception: ', '');
+      });
+      return;
+    }
     if (!mounted) return;
     Navigator.of(context).push(
       AppUtils.slideRoute(

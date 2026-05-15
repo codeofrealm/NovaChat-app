@@ -161,7 +161,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
 
       String imageUrl = '';
       if (_imageFile != null && authVm.firebaseUser != null) {
-        imageUrl = await profileVm.uploadProfileImage(userUid, _imageFile!);
+        imageUrl = await profileVm
+            .uploadProfileImage(userUid, _imageFile!)
+            .timeout(const Duration(seconds: 30));
       } else if (_imageFile != null) {
         imageUrl = _imageFile!.path;
       }
@@ -171,7 +173,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
         phone: phone,
         email: widget.email,
         profileImageUrl: imageUrl,
-      );
+      ).timeout(const Duration(seconds: 30));
 
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -194,6 +196,9 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen>
     }
     if (msg.contains('network') || msg.contains('unavailable')) {
       return 'No internet connection. Please check your network and try again.';
+    }
+    if (msg.contains('timeout') || msg.contains('timed out')) {
+      return 'Saving took too long. Please check your connection and try again.';
     }
     if (msg.contains('unauthenticated') || msg.contains('not authenticated')) {
       return 'Session expired. Please go back and login again.';

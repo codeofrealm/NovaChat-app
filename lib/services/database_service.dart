@@ -25,7 +25,7 @@ class DatabaseService {
   }
 
   Stream<UserModel?> userStream(String uid) {
-    return _db.child('users/$uid').onValue.map((e) {
+    return _db.child('users/$uid').onValue.asBroadcastStream().map((e) {
       if (!e.snapshot.exists) return null;
       return UserModel.fromMap(e.snapshot.value as Map, uid);
     });
@@ -33,30 +33,34 @@ class DatabaseService {
 
   // ─── Online Presence ──────────────────────────────────────
   void setOnline(String uid, String name) {
-    _db.update({
-      'presence/$uid/isOnline': true,
-      'presence/$uid/lastSeen': ServerValue.timestamp,
-      'presence/$uid/name': name,
-      'users/$uid/isOnline': true,
-      'users/$uid/lastSeen': ServerValue.timestamp,
-    });
+    _db.child('presence/$uid').update({
+      'isOnline': true,
+      'lastSeen': ServerValue.timestamp,
+      'name': name,
+    }).catchError((_) {});
+    _db.child('users/$uid').update({
+      'isOnline': true,
+      'lastSeen': ServerValue.timestamp,
+    }).catchError((_) {});
     _db.child('presence/$uid').onDisconnect().update({
       'isOnline': false,
       'lastSeen': ServerValue.timestamp,
-    });
+    }).catchError((_) {});
     _db.child('users/$uid').onDisconnect().update({
       'isOnline': false,
       'lastSeen': ServerValue.timestamp,
-    });
+    }).catchError((_) {});
   }
 
   void setOffline(String uid) {
-    _db.update({
-      'presence/$uid/isOnline': false,
-      'presence/$uid/lastSeen': ServerValue.timestamp,
-      'users/$uid/isOnline': false,
-      'users/$uid/lastSeen': ServerValue.timestamp,
-    });
+    _db.child('presence/$uid').update({
+      'isOnline': false,
+      'lastSeen': ServerValue.timestamp,
+    }).catchError((_) {});
+    _db.child('users/$uid').update({
+      'isOnline': false,
+      'lastSeen': ServerValue.timestamp,
+    }).catchError((_) {});
   }
 
   Stream<Map<String, dynamic>> presenceStream(String uid) {
@@ -66,20 +70,23 @@ class DatabaseService {
     });
   }
 
+
+
   // ─── Typing Indicator ─────────────────────────────────────
   void setTyping(String chatId, String uid, bool isTyping) {
-    _db.child('chats/$chatId/typing/$uid').set(isTyping);
+    _db.child('chats/$chatId/typing/$uid').set(isTyping).catchError((_) {});
   }
 
   Stream<bool> typingStream(String chatId, String otherUid) {
     return _db
         .child('chats/$chatId/typing/$otherUid')
-        .onValue
-        .map((e) => (e.snapshot.value as bool?) ?? false);
+        .onValue.asBroadcastStream()
+        .map((e) => (e.snapshot.value as bool?) ?? false)
+        .handleError((_) => false);
   }
 
   void clearTyping(String chatId, String uid) {
-    _db.child('chats/$chatId/typing/$uid').remove();
+    _db.child('chats/$chatId/typing/$uid').remove().catchError((_) {});
   }
 
   // ─── Chats ────────────────────────────────────────────────
@@ -91,13 +98,15 @@ class DatabaseService {
     required String lastMessageType,
     required int time,
   }) async {
-    await _db.child('chats/$chatId').update({
-      'participants/$uid1': true,
-      'participants/$uid2': true,
-      'lastMessage': lastMessage,
-      'lastMessageType': lastMessageType,
-      'lastMessageTime': time,
-    });
+    try {
+      await _db.child('chats/$chatId').update({
+        'participants/$uid1': true,
+        'participants/$uid2': true,
+        'lastMessage': lastMessage,
+        'lastMessageType': lastMessageType,
+        'lastMessageTime': time,
+      });
+    } catch (_) {}
   }
 
   Stream<List<Map<String, dynamic>>> chatsStream(String uid) {
@@ -105,9 +114,9 @@ class DatabaseService {
         .child('chats')
         .orderByChild('participants/$uid')
         .equalTo(true)
-        .onValue
+        .onValue.asBroadcastStream()
         .map((event) {
-      if (!event.snapshot.exists) return [];
+      if (!event.snapshot.exists) return <Map<String, dynamic>>[];
       final map = event.snapshot.value as Map;
       return map.entries
           .map((e) => {
@@ -118,7 +127,7 @@ class DatabaseService {
         ..sort((a, b) =>
             ((b['lastMessageTime'] as int?) ?? 0)
                 .compareTo((a['lastMessageTime'] as int?) ?? 0));
-    });
+    }).handleError((_) => <Map<String, dynamic>>[]);
   }
 
   /// Check if a chat already exists between two users
@@ -134,60 +143,68 @@ class DatabaseService {
 
   // ─── Messages ─────────────────────────────────────────────
   Future<void> sendMessage(String chatId, MessageModel message) async {
-    final ref = _db.child('messages/$chatId').push();
-    await ref.set(message.toMap());
-
-    final msgText = message.type == MessageType.image
-        ? '📷 Photo'
-        : message.type == MessageType.voice
-            ? '🎤 Voice message'
-            : message.type == MessageType.emoji
-                ? '😊 Emoji'
-                : message.text;
-
-    await createOrUpdateChat(
-      chatId: chatId,
-      uid1: message.senderId,
-      uid2: message.receiverId,
-      lastMessage: msgText,
-      lastMessageType: message.type.name,
-      time: message.timestamp,
-    );
-
-    // Mark as delivered
-    await ref.update({'isDelivered': true});
+    try {
+      final ref = _db.child('messages/$chatId').push();
+      await ref.set(message.toMap());
+      final msgText = message.type == MessageType.image
+          ? '📷 Photo'
+          : message.type == MessageType.voice
+              ? '🎤 Voice message'
+              : message.type == MessageType.emoji
+                  ? '😊 Emoji'
+                  : message.text;
+      await createOrUpdateChat(
+        chatId: chatId,
+        uid1: message.senderId,
+        uid2: message.receiverId,
+        lastMessage: msgText,
+        lastMessageType: message.type.name,
+        time: message.timestamp,
+      );
+      ref.update({'isDelivered': true}).catchError((_) {});
+    } catch (_) {}
   }
+
+  Future<void> deleteMessage(String chatId, String messageId) async {
+    try {
+      await _db.child('messages/$chatId/$messageId').remove();
+    } catch (_) {}
+  }
+
+
 
   Stream<List<MessageModel>> messagesStream(String chatId) {
     return _db
         .child('messages/$chatId')
         .orderByChild('timestamp')
-        .onValue
+        .onValue.asBroadcastStream()
         .map((event) {
-      if (!event.snapshot.exists) return [];
+      if (!event.snapshot.exists) return <MessageModel>[];
       final map = event.snapshot.value as Map;
       return map.entries
           .map((e) => MessageModel.fromMap(e.value as Map, e.key))
           .toList()
         ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-    });
+    }).handleError((_) => <MessageModel>[]);
   }
 
   Future<void> markMessagesSeen(String chatId, String receiverId) async {
-    final snap = await _db
-        .child('messages/$chatId')
-        .orderByChild('receiverId')
-        .equalTo(receiverId)
-        .get();
-    if (!snap.exists) return;
-    final map = snap.value as Map;
-    final updates = <String, dynamic>{};
-    for (final entry in map.entries) {
-      if (!(entry.value['isSeen'] as bool? ?? false)) {
-        updates['messages/$chatId/${entry.key}/isSeen'] = true;
+    try {
+      final snap = await _db
+          .child('messages/$chatId')
+          .orderByChild('receiverId')
+          .equalTo(receiverId)
+          .get();
+      if (!snap.exists) return;
+      final map = snap.value as Map;
+      final updates = <String, dynamic>{};
+      for (final entry in map.entries) {
+        if (!(entry.value['isSeen'] as bool? ?? false)) {
+          updates['messages/$chatId/${entry.key}/isSeen'] = true;
+        }
       }
-    }
-    if (updates.isNotEmpty) await _db.update(updates);
+      if (updates.isNotEmpty) await _db.update(updates);
+    } catch (_) {}
   }
 
   Future<void> markMessageDelivered(String chatId, String messageId) async {
@@ -220,7 +237,7 @@ class DatabaseService {
         .child('messages/$chatId')
         .orderByChild('receiverId')
         .equalTo(uid)
-        .onValue
+        .onValue.asBroadcastStream()
         .map((event) {
       if (!event.snapshot.exists) return 0;
       final map = event.snapshot.value as Map;

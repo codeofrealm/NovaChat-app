@@ -45,21 +45,6 @@ class AuthViewModel extends ChangeNotifier {
       await _loadAndRestoreSession(user.uid);
       return true;
     }
-    // Check cached auth state
-    final cached = await _secureStorage.getAuthState();
-    if (cached != null && cached['uid'] != null) {
-      final uid = cached['uid'] as String;
-      final isNewUser = cached['isNewUser'] as bool? ?? false;
-      // Verify the user still exists
-      final profile = await _firestoreService.getUser(uid);
-      if (profile != null) {
-        _resolvedUid = uid;
-        _isNewUser = isNewUser;
-        _currentUser = profile;
-        _setState(AuthState.verified);
-        return true;
-      }
-    }
     return false;
   }
 

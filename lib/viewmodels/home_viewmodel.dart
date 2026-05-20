@@ -26,6 +26,7 @@ class HomeViewModel extends ChangeNotifier {
   int get totalUnread => _totalUnread;
 
   void listenToChats(String uid) {
+    if (uid.isEmpty) return;
     _isLoading = true;
     notifyListeners();
     _chatsSub?.cancel();
@@ -33,6 +34,9 @@ class HomeViewModel extends ChangeNotifier {
       _chats = chats;
       _isLoading = false;
       _computeTotalUnread(uid);
+      notifyListeners();
+    }, onError: (_) {
+      _isLoading = false;
       notifyListeners();
     });
   }
@@ -55,6 +59,12 @@ class HomeViewModel extends ChangeNotifier {
     _allUsers = await _fs.getAllUsers(currentUid);
     _isLoading = false;
     notifyListeners();
+  }
+
+  Future<List<UserModel>> loadAllUsersReturn(String currentUid) async {
+    _allUsers = await _db.getAllUsers(currentUid);
+    notifyListeners();
+    return _allUsers;
   }
 
   Future<void> searchUsers(String query, String currentUid) async {

@@ -78,7 +78,7 @@ class FirestoreService {
   }
 
   Stream<UserModel?> userStream(String uid) {
-    return _users.doc(uid).snapshots().map((doc) {
+    return _users.doc(uid).snapshots().asBroadcastStream().map((doc) {
       if (!doc.exists) return null;
       return UserModel.fromMap(doc.data() as Map, uid);
     });

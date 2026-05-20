@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import '../models/message_model.dart';
@@ -8,6 +9,8 @@ import '../services/database_service.dart';
 class ChatViewModel extends ChangeNotifier {
   final DatabaseService _db = DatabaseService();
   final _uuid = const Uuid();
+
+  bool get _hasAuth => FirebaseAuth.instance.currentUser != null;
 
   List<MessageModel> _messages = [];
   bool _isLoading = false;
@@ -58,7 +61,9 @@ class ChatViewModel extends ChangeNotifier {
     required String senderId,
     required String receiverId,
     required File imageFile,
+    String text = '',
   }) async {
+    if (!_hasAuth) return; // skip upload in mock mode
     _isSending = true;
     _uploadProgress = 0;
     notifyListeners();
@@ -74,6 +79,7 @@ class ChatViewModel extends ChangeNotifier {
         messageId: _uuid.v4(),
         senderId: senderId,
         receiverId: receiverId,
+        text: text,
         imageUrl: url,
         timestamp: DateTime.now().millisecondsSinceEpoch,
         isDelivered: true,
@@ -81,6 +87,7 @@ class ChatViewModel extends ChangeNotifier {
         type: MessageType.image,
       );
       await _db.sendMessage(chatId, msg);
+    } catch (_) {
     } finally {
       _isSending = false;
       _uploadProgress = 0;
@@ -94,6 +101,7 @@ class ChatViewModel extends ChangeNotifier {
     required String receiverId,
     required File voiceFile,
   }) async {
+    if (!_hasAuth) return; // skip upload in mock mode
     _isSending = true;
     notifyListeners();
     try {
@@ -109,6 +117,7 @@ class ChatViewModel extends ChangeNotifier {
         type: MessageType.voice,
       );
       await _db.sendMessage(chatId, msg);
+    } catch (_) {
     } finally {
       _isSending = false;
       notifyListeners();
@@ -149,6 +158,10 @@ class ChatViewModel extends ChangeNotifier {
     String uid,
   ) async {
     await _db.removeReaction(chatId, messageId, uid);
+  }
+
+  Future<void> deleteMessage(String chatId, String messageId) async {
+    await _db.deleteMessage(chatId, messageId);
   }
 
   void setTyping(String chatId, String uid, bool isTyping) {

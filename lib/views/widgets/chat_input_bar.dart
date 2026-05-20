@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,10 +8,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/app_utils.dart';
+import '../screens/media_preview_screen.dart';
 
 class ChatInputBar extends StatefulWidget {
   final Function(String text) onSendText;
-  final Function(File image) onSendImage;
+  final Function(File image, String caption) onSendImage;
   final Function(File voice) onSendVoice;
   final Function(bool isTyping) onTypingChanged;
 
@@ -77,14 +79,23 @@ class _ChatInputBarState extends State<ChatInputBar>
   Future<void> _pickImage() async {
     Navigator.pop(context);
     try {
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(
+      final picked = await ImagePicker().pickImage(
         source: ImageSource.gallery,
         imageQuality: 70,
         maxWidth: 1200,
       );
       if (picked != null) {
-        widget.onSendImage(File(picked.path));
+        final file = File(picked.path);
+        if (!mounted) return;
+        final caption = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MediaPreviewScreen(file: file, isVideo: false),
+          ),
+        );
+        if (caption != null) {
+          widget.onSendImage(file, caption);
+        }
       }
     } catch (_) {}
   }
@@ -94,14 +105,46 @@ class _ChatInputBarState extends State<ChatInputBar>
     try {
       final status = await Permission.camera.request();
       if (!status.isGranted) return;
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(
+      final picked = await ImagePicker().pickImage(
         source: ImageSource.camera,
         imageQuality: 70,
         maxWidth: 1200,
       );
       if (picked != null) {
-        widget.onSendImage(File(picked.path));
+        final file = File(picked.path);
+        if (!mounted) return;
+        final caption = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MediaPreviewScreen(file: file, isVideo: false),
+          ),
+        );
+        if (caption != null) {
+          widget.onSendImage(file, caption);
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _pickVideo() async {
+    Navigator.pop(context);
+    try {
+      final picked = await ImagePicker().pickVideo(
+        source: ImageSource.gallery,
+        maxDuration: const Duration(minutes: 5),
+      );
+      if (picked != null) {
+        final file = File(picked.path);
+        if (!mounted) return;
+        final caption = await Navigator.push<String>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MediaPreviewScreen(file: file, isVideo: true),
+          ),
+        );
+        if (caption != null) {
+          widget.onSendImage(file, caption);
+        }
       }
     } catch (_) {}
   }
@@ -120,9 +163,13 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   void _stopRecording() {
+    if (!_isRecording) return;
     _recordTimer?.cancel();
     setState(() => _isRecording = false);
-    // In production: stop recorder and get file, then call widget.onSendVoice(file)
+    HapticFeedback.heavyImpact();
+    // In a real app, we would get the file from the recorder.
+    // For this demo/mock, we send a dummy file path.
+    widget.onSendVoice(File('mock_voice_message.aac'));
   }
 
   void _toggleEmoji() {
@@ -145,13 +192,15 @@ class _ChatInputBarState extends State<ChatInputBar>
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AttachmentSheet(
-        onImage: _pickImage,
-        onCamera: _takePhoto,
-        onVoice: () {
-          Navigator.pop(context);
-          // Voice recording action
-        },
+      barrierColor: Colors.black26,
+      builder: (_) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: _AttachmentSheet(
+          onImage: _pickImage,
+          onCamera: _takePhoto,
+          onVideo: _pickVideo,
+          onVoice: () => Navigator.pop(context),
+        ),
       ),
     );
   }
@@ -180,13 +229,7 @@ class _ChatInputBarState extends State<ChatInputBar>
           ),
           decoration: BoxDecoration(
             color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 16,
-                offset: const Offset(0, -3),
-              ),
-            ],
+            border: Border(top: BorderSide(color: AppColors.divider.withOpacity(0.3))),
           ),
           child: SafeArea(
             top: false,
@@ -204,8 +247,12 @@ class _ChatInputBarState extends State<ChatInputBar>
             ),
           ),
         ),
-        SlideTransition(
-          position: _slideAnim,
+        SizeTransition(
+          sizeFactor: CurvedAnimation(
+            parent: _animController,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          ),
           child: FadeTransition(
             opacity: _animController,
             child: _buildEmojiPicker(),
@@ -394,15 +441,16 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 }
 
-/// Attachment Bottom Sheet
 class _AttachmentSheet extends StatelessWidget {
   final VoidCallback onImage;
   final VoidCallback onCamera;
+  final VoidCallback onVideo;
   final VoidCallback onVoice;
 
   const _AttachmentSheet({
     required this.onImage,
     required this.onCamera,
+    required this.onVideo,
     required this.onVoice,
   });
 
@@ -433,59 +481,44 @@ class _AttachmentSheet extends StatelessWidget {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          const Text(
-            'Attach',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
+          const Text('Share', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 16),
+          // Grid of options
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _gridOption(Icons.image_rounded, 'Gallery', AppColors.primary, onImage),
+                _gridOption(Icons.camera_alt_rounded, 'Camera', const Color(0xFF10B981), onCamera),
+                _gridOption(Icons.videocam_rounded, 'Video', const Color(0xFFF59E0B), onVideo),
+                _gridOption(Icons.mic_rounded, 'Audio', const Color(0xFFEF4444), onVoice),
+              ],
             ),
           ),
           const SizedBox(height: 24),
-          _buildOption(
-            icon: Icons.image_outlined,
-            label: 'Gallery',
-            onTap: onImage,
-          ),
-          _buildOption(
-            icon: Icons.camera_alt_outlined,
-            label: 'Camera',
-            onTap: onCamera,
-          ),
-          _buildOption(
-            icon: Icons.mic_none_outlined,
-            label: 'Voice Note',
-            onTap: onVoice,
-          ),
-          const SizedBox(height: 12),
         ],
       ),
     );
   }
 
-  Widget _buildOption({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
+  Widget _gridOption(IconData icon, String label, Color color, VoidCallback onTap) {
+    return GestureDetector(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: AppColors.primarySoft,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: AppColors.primary, size: 20),
+      child: Column(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(16),
             ),
-            const SizedBox(width: 14),
-            Text(label, style: AppTextStyles.titleMedium),
-          ],
-        ),
+            child: Icon(icon, color: color, size: 26),
+          ),
+          const SizedBox(height: 6),
+          Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ],
       ),
     );
   }

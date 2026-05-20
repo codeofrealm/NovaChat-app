@@ -34,33 +34,17 @@
     "chats": {
       ".read": "auth != null",
       ".write": "auth != null",
-      ".indexOn": ["lastMessageTime"],
       "$chatId": {
-        "lastMessageTime": {
-          ".validate": "newData.isNumber()"
-        }
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".indexOn": ["lastMessageTime", "participants"]
       }
     },
     "messages": {
       ".read": "auth != null",
       ".write": "auth != null",
       "$chatId": {
-        ".indexOn": ["receiverId", "timestamp"],
-        "$messageId": {
-          ".validate": "newData.hasChildren(['senderId', 'receiverId', 'timestamp', 'type'])",
-          "senderId": {
-            ".validate": "newData.isString()"
-          },
-          "receiverId": {
-            ".validate": "newData.isString()"
-          },
-          "timestamp": {
-            ".validate": "newData.isNumber()"
-          },
-          "text": {
-            ".validate": "newData.isString()"
-          }
-        }
+        ".indexOn": ["receiverId", "timestamp"]
       }
     }
   }
